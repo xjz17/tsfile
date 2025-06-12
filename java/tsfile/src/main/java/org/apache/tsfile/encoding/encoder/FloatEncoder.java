@@ -90,6 +90,15 @@ public class FloatEncoder extends Encoder {
         throw new TsFileEncodingException(
             String.format("data type %s is not supported by FloatEncoder", dataType));
       }
+    } else if (encodingType == TSEncoding.SUBCOLUMN) {
+      if (dataType == TSDataType.FLOAT) {
+        encoder = new SubcolumnEncoder.IntSubcolumnEncoder();
+      } else if (dataType == TSDataType.DOUBLE) {
+        encoder = new SubcolumnEncoder.LongSubcolumnEncoder();
+      } else {
+        throw new TsFileEncodingException(
+            String.format("data type %s is not supported by FloatEncoder", dataType));
+      }
     } else {
       throw new TsFileEncodingException(
           String.format("%s encoding is not supported by FloatEncoder", encodingType));
