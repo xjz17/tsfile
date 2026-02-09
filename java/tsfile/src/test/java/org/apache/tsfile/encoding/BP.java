@@ -16,11 +16,7 @@ import java.util.Objects;
 
 public class BP {
 
-//    static final List<String> IGNORE_FILES = Arrays.asList(".DS_Store", "full_data", "test.csv","POI-lat.csv","POI-lon.csv","Basel-wind.csv","Basel-temp.csv","Air-sensor.csv");
-    static final List<String> IGNORE_FILES = Arrays.asList(".DS_Store", "full_data", "test.csv","POI-lat.csv","init.csv",
-            "POI-lon.csv","Basel-wind.csv","Basel-temp.csv","Air-sensor.csv","Disk-usage.csv",
-            "City-temp.csv", "Wind-Speed.csv","IR-bio-temp.csv","Air-pressure.csv","Stocks-USA.csv","Stocks-DE.csv","City-lat.csv","City-lon.csv",
-            "Bitcoin-price.csv","Bird-migration.csv","Cpu-usage_right.csv","Disk-usage.csv","Mem-usage.csv","SSD-bench.csv","Dew-point-temp.csv");
+    static final List<String> IGNORE_FILES = Arrays.asList(".DS_Store", "full_data", "test.csv");
 
 
     private static final int CHUNK_SIZE = 1024;
@@ -144,29 +140,6 @@ public class BP {
         return result;
     }
 
-    // 新增的完整解压函数（包含头部信息解析）
-//    public static int[] decodeBitPackingWithHeader(byte[] encodedWithHeader, int pack_size) {
-//        // 解析头部信息 - 假设前4个字节存储原始数据长度
-//        int originalLength = bytes2Integer(encodedWithHeader, 0, 4);
-//
-//        // 解析分组数
-//        int groupCount = bytes2Integer(encodedWithHeader, 4, 4);
-//
-//        // 解析位宽数组
-//        int[] bitWidths = new int[groupCount];
-//        int headerSize = 8; // 4字节原始长度 + 4字节分组数
-//        for (int i = 0; i < groupCount; i++) {
-//            bitWidths[i] = encodedWithHeader[headerSize + i] & 0xFF;
-//        }
-//
-//        // 压缩数据起始位置
-//        int dataStart = headerSize + groupCount;
-//        byte[] compressedData = new byte[encodedWithHeader.length - dataStart];
-//        System.arraycopy(encodedWithHeader, dataStart, compressedData, 0, compressedData.length);
-//
-//        // 调用解压函数
-//        return decodeBitPacking(compressedData, bitWidths, pack_size, originalLength);
-//    }
 
     // 8. 修复：sprintz编码解码
     public static long[] zigzag(long[] numbers) {

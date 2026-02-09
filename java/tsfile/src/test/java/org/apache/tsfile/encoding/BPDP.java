@@ -16,10 +16,7 @@ import java.util.List;
 import java.util.Objects;
 
 public class BPDP {
-    static final List<String> IGNORE_FILES = Arrays.asList(".DS_Store", "full_data", "test.csv","POI-lat.csv","init.csv",
-            "POI-lon.csv","Basel-wind.csv","Basel-temp.csv","Air-sensor.csv","Disk-usage.csv",
-            "City-temp.csv", "Wind-Speed.csv","IR-bio-temp.csv","Air-pressure.csv","Stocks-USA.csv","Stocks-DE.csv","City-lat.csv","City-lon.csv",
-            "Bitcoin-price.csv","Bird-migration.csv","Cpu-usage_right.csv","Disk-usage.csv","Mem-usage.csv","SSD-bench.csv","Dew-point-temp.csv");
+    static final List<String> IGNORE_FILES = Arrays.asList(".DS_Store", "full_data", "test.csv");
 
 
     private static final int CHUNK_SIZE = 1024;
@@ -46,69 +43,6 @@ public class BPDP {
         return s;
     }
 
-    // scaleNumbers: use BigDecimal to parse, scale by 10^decimalMax, shift so min becomes 0, return long[] with clipping
-//    static long[] scaleNumbers(List<String> numbers, int decimalMax) {
-//        int n = numbers.size();
-//        long[] result = new long[n];
-//        if (n == 0) return result;
-//
-//        BigDecimal scale = BigDecimal.ONE;
-//        for (int i = 0; i < decimalMax; ++i) scale = scale.multiply(BigDecimal.TEN);
-//
-//        BigDecimal[] vals = new BigDecimal[n];
-//        for (int i = 0; i < n; ++i) {
-//            String s = trimStr(numbers.get(i));
-//            s = stripEnclosingQuotes(s);
-//            if (s.isEmpty()) { vals[i] = BigDecimal.ZERO; continue; }
-//            s = s.replace(",", ""); // remove thousands sep
-//
-//            // If scientific notation present, BigDecimal can parse it
-//            try {
-//                BigDecimal bd = new BigDecimal(s);
-//                BigDecimal scaled = bd.multiply(scale);
-//                // rounding to nearest whole
-//                BigDecimal rounded = scaled.setScale(0, RoundingMode.HALF_UP);
-//                vals[i] = rounded;
-//            } catch (Exception ex) {
-//                // fallback: parse double
-//                try {
-//                    double dv = Double.parseDouble(s);
-//                    BigDecimal bd = BigDecimal.valueOf(dv).multiply(scale);
-//                    vals[i] = bd.setScale(0, RoundingMode.HALF_UP);
-//                } catch (Exception ex2) {
-//                    System.err.println("Warning: cannot parse token '" + numbers.get(i) + "', set to 0");
-//                    vals[i] = BigDecimal.ZERO;
-//                }
-//            }
-//        }
-//
-//        // find min
-//        BigDecimal minv = vals[0];
-//        for (int i = 1; i < n; ++i) if (vals[i].compareTo(minv) < 0) minv = vals[i];
-//
-//        for (int i = 0; i < n; ++i) {
-//            BigDecimal shifted = vals[i].subtract(minv);
-//            // clamp to long range
-//            try {
-//                BigInteger bi = shifted.toBigIntegerExact();
-//                if (bi.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0) result[i] = Long.MAX_VALUE;
-//                else if (bi.compareTo(BigInteger.valueOf(Long.MIN_VALUE)) < 0) result[i] = Long.MIN_VALUE;
-//                else result[i] = bi.longValue();
-//            } catch (ArithmeticException ae) {
-//                // not an integer exactly: fallback by converting to long with rounding
-//                BigDecimal rounded = shifted.setScale(0, RoundingMode.HALF_UP);
-//                try {
-//                    BigInteger bi = rounded.toBigIntegerExact();
-//                    if (bi.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0) result[i] = Long.MAX_VALUE;
-//                    else if (bi.compareTo(BigInteger.valueOf(Long.MIN_VALUE)) < 0) result[i] = Long.MIN_VALUE;
-//                    else result[i] = bi.longValue();
-//                } catch (Exception ex) {
-//                    result[i] = 0;
-//                }
-//            }
-//        }
-//        return result;
-//    }
 
 
 
