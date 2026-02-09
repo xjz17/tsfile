@@ -13,10 +13,7 @@ import java.util.regex.*;
 
 public class BPRL {
 
-    static final List<String> IGNORE_FILES = Arrays.asList(".DS_Store", "full_data", "test.csv","POI-lat.csv","init.csv",
-            "POI-lon.csv","Basel-wind.csv","Basel-temp.csv","Air-sensor.csv","Disk-usage.csv",
-            "City-temp.csv", "Wind-Speed.csv","IR-bio-temp.csv","Air-pressure.csv","Stocks-USA.csv","Stocks-DE.csv","City-lat.csv","City-lon.csv",
-            "Bitcoin-price.csv","Bird-migration.csv","Cpu-usage_right.csv","Disk-usage.csv","Mem-usage.csv","SSD-bench.csv","Dew-point-temp.csv");
+    static final List<String> IGNORE_FILES = Arrays.asList(".DS_Store", "full_data", "test.csv");
 
     static final int CHUNK_SIZE = 1024;
     static final int INPUT_DIM = 5;
