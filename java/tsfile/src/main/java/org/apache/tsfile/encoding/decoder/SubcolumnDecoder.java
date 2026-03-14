@@ -1,3 +1,22 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 package org.apache.tsfile.encoding.decoder;
 
 import org.apache.tsfile.file.metadata.enums.TSEncoding;
@@ -6,6 +25,7 @@ import org.apache.tsfile.utils.ReadWriteIOUtils;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 public abstract class SubcolumnDecoder extends Decoder {
 
@@ -13,20 +33,10 @@ public abstract class SubcolumnDecoder extends Decoder {
   protected byte[] deltaBuf;
 
   protected int readIntTotalCount = 0;
-
   protected int nextReadIndex = 0;
-
-  /** max bit length of all value in a pack. */
   protected int packWidth;
-
-  /** data number in this pack. */
   protected int packNum;
-
   protected int encodingLength;
-
-  protected int beta = 3;
-
-  protected int encode_pos = 0;
 
   public SubcolumnDecoder() {
     super(TSEncoding.SUBCOLUMN);
@@ -42,111 +52,102 @@ public abstract class SubcolumnDecoder extends Decoder {
   }
 
   public static int decodeBitPacking(
-      byte[] encoded, int decode_pos, int bit_width, int num_values, int[] result_list) {
-    int block_num = num_values / 8;
-    int remainder = num_values % 8;
-
-    for (int i = 0; i < block_num; i++) { // bitpacking
-      unpack8Values(encoded, decode_pos, bit_width, result_list, i * 8);
-      decode_pos += bit_width;
+      byte[] encoded, int decodePos, int bitWidth, int numValues, int[] resultList) {
+    if (bitWidth <= 0 || numValues <= 0) {
+      return decodePos;
     }
 
-    decode_pos *= 8;
+    int blockNum = numValues / 8;
+    int remainder = numValues % 8;
+
+    for (int i = 0; i < blockNum; i++) {
+      unpack8Values(encoded, decodePos, bitWidth, resultList, i * 8);
+      decodePos += bitWidth;
+    }
+
+    decodePos *= 8;
 
     for (int i = 0; i < remainder; i++) {
-      result_list[block_num * 8 + i] = BytesUtils.bytesToInt(encoded, decode_pos, bit_width);
-      decode_pos += bit_width;
+      resultList[blockNum * 8 + i] = BytesUtils.bytesToInt(encoded, decodePos, bitWidth);
+      decodePos += bitWidth;
     }
 
-    return (decode_pos + 7) / 8;
+    return (decodePos + 7) / 8;
   }
 
   public static void unpack8Values(
-      byte[] encoded, int offset, int width, int[] result_list, int result_offset) {
+      byte[] encoded, int offset, int width, int[] resultList, int resultOffset) {
     int byteIdx = offset;
     long buffer = 0;
-    // total bits which have read from 'buf' to 'buffer'. i.e.,
-    // number of available bits to be decoded.
     int totalBits = 0;
     int valueIdx = 0;
 
     while (valueIdx < 8) {
-      // If current available bits are not enough to decode one Integer,
-      // then add next byte from buf to 'buffer' until totalBits >= width
       while (totalBits < width) {
-        buffer = (buffer << 8) | (encoded[byteIdx] & 0xFF);
+        buffer = (buffer << 8) | (encoded[byteIdx] & 0xFFL);
         byteIdx++;
         totalBits += 8;
       }
 
-      // If current available bits are enough to decode one Integer,
-      // then decode one Integer one by one until left bits in 'buffer' is
-      // not enough to decode one Integer.
       while (totalBits >= width && valueIdx < 8) {
-        // result_list.add((int) (buffer >>> (totalBits - width)));
-        result_list[result_offset + valueIdx] = (int) (buffer >>> (totalBits - width));
+        resultList[resultOffset + valueIdx] = (int) (buffer >>> (totalBits - width));
         valueIdx++;
         totalBits -= width;
-        buffer = buffer & ((1L << totalBits) - 1);
+        buffer &= (1L << totalBits) - 1;
       }
     }
   }
 
   public static int decodeBitPacking(
-      byte[] encoded, int decode_pos, int bit_width, int num_values, long[] result_list) {
-    int block_num = num_values / 8;
-    int remainder = num_values % 8;
-
-    for (int i = 0; i < block_num; i++) { // bitpacking
-      unpack8Values(encoded, decode_pos, bit_width, result_list, i * 8);
-      decode_pos += bit_width;
+      byte[] encoded, int decodePos, int bitWidth, int numValues, long[] resultList) {
+    if (bitWidth <= 0 || numValues <= 0) {
+      return decodePos;
     }
 
-    decode_pos *= 8;
+    int blockNum = numValues / 8;
+    int remainder = numValues % 8;
+
+    for (int i = 0; i < blockNum; i++) {
+      unpack8Values(encoded, decodePos, bitWidth, resultList, i * 8);
+      decodePos += bitWidth;
+    }
+
+    decodePos *= 8;
 
     for (int i = 0; i < remainder; i++) {
-      result_list[block_num * 8 + i] = BytesUtils.bytesToLong(encoded, decode_pos, bit_width);
-      decode_pos += bit_width;
+      resultList[blockNum * 8 + i] = BytesUtils.bytesToLong(encoded, decodePos, bitWidth);
+      decodePos += bitWidth;
     }
 
-    return (decode_pos + 7) / 8;
+    return (decodePos + 7) / 8;
   }
 
   public static void unpack8Values(
-      byte[] encoded, int offset, int width, long[] result_list, int result_offset) {
+      byte[] encoded, int offset, int width, long[] resultList, int resultOffset) {
     int byteIdx = offset;
     long buffer = 0;
-    // total bits which have read from 'buf' to 'buffer'. i.e.,
-    // number of available
-    // bits to be decoded.
     int totalBits = 0;
     int valueIdx = 0;
 
     while (valueIdx < 8) {
-      // If current available bits are not enough to decode one Integer,
-      // then add next byte from buf to 'buffer' until totalBits >= width
       while (totalBits < width) {
-        buffer = (buffer << 8) | (encoded[byteIdx] & 0xFF);
+        buffer = (buffer << 8) | (encoded[byteIdx] & 0xFFL);
         byteIdx++;
         totalBits += 8;
       }
 
-      // If current available bits are enough to decode one Integer,
-      // then decode one Integer one by one until left bits in 'buffer' is
-      // not enough to decode one Integer.
       while (totalBits >= width && valueIdx < 8) {
-        // result_list.add((int) (buffer >>> (totalBits - width)));
-        result_list[result_offset + valueIdx] = buffer >>> (totalBits - width);
+        resultList[resultOffset + valueIdx] = buffer >>> (totalBits - width);
         valueIdx++;
         totalBits -= width;
-        buffer = buffer & ((1L << totalBits) - 1);
+        buffer &= (1L << totalBits) - 1;
       }
     }
   }
 
   public static class IntSubcolumnDecoder extends SubcolumnDecoder {
-    private int[] data;
 
+    private int[] data;
     private int minDeltaBase;
 
     public IntSubcolumnDecoder() {
@@ -172,18 +173,13 @@ public abstract class SubcolumnDecoder extends Decoder {
 
       readHeader(buffer);
       allocateDataArray();
-
       readIntTotalCount = packNum;
       nextReadIndex = 0;
 
-      encode_pos = 0;
-
       if (packWidth != 0) {
-
         encodingLength = ReadWriteIOUtils.readInt(buffer);
         deltaBuf = new byte[encodingLength];
         buffer.get(deltaBuf);
-
         readPack();
       }
 
@@ -192,56 +188,66 @@ public abstract class SubcolumnDecoder extends Decoder {
       }
     }
 
-    private int getValueWidth(int v) {
-      return 32 - Integer.numberOfLeadingZeros(v);
+    private int getValueWidth(int value) {
+      return value == 0 ? 0 : 32 - Integer.numberOfLeadingZeros(value);
     }
 
     private void readPack() {
-      int bw = getValueWidth(packNum);
-
+      int decodePos = 0;
+      int beta = deltaBuf[decodePos++] & 0xFF;
       int l = (packWidth + beta - 1) / beta;
-
       int[] bitWidthList = new int[l];
-
-      encode_pos = decodeBitPacking(deltaBuf, encode_pos, 8, l, bitWidthList);
-
-      int[][] subcolumnList = new int[l][packNum];
+      decodePos = decodeBitPacking(deltaBuf, decodePos, 8, l, bitWidthList);
 
       int[] encodingType = new int[l];
+      decodePos = decodeBitPacking(deltaBuf, decodePos, 2, l, encodingType);
 
-      encode_pos = decodeBitPacking(deltaBuf, encode_pos, 1, l, encodingType);
-
-      for (int i = l - 1; i >= 0; i--) {
-        int type = encodingType[i];
-        int bitWidth = bitWidthList[i];
-        if (type == 0) {
-          encode_pos = decodeBitPacking(deltaBuf, encode_pos, bitWidth, packNum, subcolumnList[i]);
-        } else {
-          int index = ((deltaBuf[encode_pos] & 0xFF) << 8) | (deltaBuf[encode_pos + 1] & 0xFF);
-          encode_pos += 2;
-
-          int[] run_length = new int[index];
-          int[] rle_values = new int[index];
-
-          encode_pos = decodeBitPacking(deltaBuf, encode_pos, bw, index, run_length);
-          encode_pos = decodeBitPacking(deltaBuf, encode_pos, bitWidth, index, rle_values);
-
-          int currentIndex = 0;
-          for (int j = 0; j < index; j++) {
-            int endPos = run_length[j];
-            int value = rle_values[j];
-            while (currentIndex < endPos) {
-              subcolumnList[i][currentIndex] = value;
-              currentIndex++;
-            }
-          }
-        }
-      }
+      int[] subcolumnBuffer = new int[packNum];
+      int runLengthBitWidth = getValueWidth(packNum);
 
       for (int i = 0; i < l; i++) {
+        Arrays.fill(subcolumnBuffer, 0);
+        int currentBitWidth = bitWidthList[i];
+        if (encodingType[i] == 0) {
+          decodePos =
+              decodeBitPacking(deltaBuf, decodePos, currentBitWidth, packNum, subcolumnBuffer);
+        } else if (encodingType[i] == 1) {
+          int runCount = ((deltaBuf[decodePos] & 0xFF) << 8) | (deltaBuf[decodePos + 1] & 0xFF);
+          decodePos += 2;
+
+          int[] runLength = new int[runCount];
+          int[] rleValues = new int[runCount];
+          decodePos =
+              decodeBitPacking(deltaBuf, decodePos, runLengthBitWidth, runCount, runLength);
+          decodePos = decodeBitPacking(deltaBuf, decodePos, currentBitWidth, runCount, rleValues);
+
+          int currentIndex = 0;
+          for (int j = 0; j < runCount; j++) {
+            int endPos = runLength[j];
+            int value = rleValues[j];
+            while (currentIndex < endPos) {
+              subcolumnBuffer[currentIndex++] = value;
+            }
+          }
+        } else {
+          int cardinality =
+              ((deltaBuf[decodePos] & 0xFF) << 8) | (deltaBuf[decodePos + 1] & 0xFF);
+          decodePos += 2;
+
+          int dictBitWidth = getValueWidth(cardinality);
+          int[] dictKeyList = new int[cardinality];
+          decodePos =
+              decodeBitPacking(deltaBuf, decodePos, currentBitWidth, cardinality, dictKeyList);
+          decodePos = decodeBitPacking(deltaBuf, decodePos, dictBitWidth, packNum, subcolumnBuffer);
+
+          for (int j = 0; j < packNum; j++) {
+            subcolumnBuffer[j] = dictKeyList[subcolumnBuffer[j]];
+          }
+        }
+
         int shiftAmount = i * beta;
         for (int j = 0; j < packNum; j++) {
-          data[j] |= subcolumnList[i][j] << shiftAmount;
+          data[j] |= subcolumnBuffer[j] << shiftAmount;
         }
       }
     }
@@ -263,8 +269,8 @@ public abstract class SubcolumnDecoder extends Decoder {
   }
 
   public static class LongSubcolumnDecoder extends SubcolumnDecoder {
-    private long[] data;
 
+    private long[] data;
     private long minDeltaBase;
 
     public LongSubcolumnDecoder() {
@@ -290,18 +296,13 @@ public abstract class SubcolumnDecoder extends Decoder {
 
       readHeader(buffer);
       allocateDataArray();
-
       readIntTotalCount = packNum;
       nextReadIndex = 0;
 
-      encode_pos = 0;
-
       if (packWidth != 0) {
-
         encodingLength = ReadWriteIOUtils.readInt(buffer);
         deltaBuf = new byte[encodingLength];
         buffer.get(deltaBuf);
-
         readPack();
       }
 
@@ -310,56 +311,66 @@ public abstract class SubcolumnDecoder extends Decoder {
       }
     }
 
-    private int getValueWidth(long v) {
-      return 64 - Long.numberOfLeadingZeros(v);
+    private int getValueWidth(long value) {
+      return value == 0 ? 0 : 64 - Long.numberOfLeadingZeros(value);
     }
 
     private void readPack() {
-      int bw = getValueWidth(packNum);
-
+      int decodePos = 0;
+      int beta = deltaBuf[decodePos++] & 0xFF;
       int l = (packWidth + beta - 1) / beta;
-
       int[] bitWidthList = new int[l];
-
-      encode_pos = decodeBitPacking(deltaBuf, encode_pos, 8, l, bitWidthList);
-
-      long[][] subcolumnList = new long[l][packNum];
+      decodePos = decodeBitPacking(deltaBuf, decodePos, 8, l, bitWidthList);
 
       int[] encodingType = new int[l];
+      decodePos = decodeBitPacking(deltaBuf, decodePos, 2, l, encodingType);
 
-      encode_pos = decodeBitPacking(deltaBuf, encode_pos, 1, l, encodingType);
-
-      for (int i = l - 1; i >= 0; i--) {
-        long type = encodingType[i];
-        int bitWidth = bitWidthList[i];
-        if (type == 0) {
-          encode_pos = decodeBitPacking(deltaBuf, encode_pos, bitWidth, packNum, subcolumnList[i]);
-        } else {
-          int index = ((deltaBuf[encode_pos] & 0xFF) << 8) | (deltaBuf[encode_pos + 1] & 0xFF);
-          encode_pos += 2;
-
-          long[] run_length = new long[index];
-          long[] rle_values = new long[index];
-
-          encode_pos = decodeBitPacking(deltaBuf, encode_pos, bw, index, run_length);
-          encode_pos = decodeBitPacking(deltaBuf, encode_pos, bitWidth, index, rle_values);
-
-          int currentIndex = 0;
-          for (int j = 0; j < index; j++) {
-            long endPos = run_length[j];
-            long value = rle_values[j];
-            while (currentIndex < endPos) {
-              subcolumnList[i][currentIndex] = value;
-              currentIndex++;
-            }
-          }
-        }
-      }
+      long[] subcolumnBuffer = new long[packNum];
+      int runLengthBitWidth = getValueWidth(packNum);
 
       for (int i = 0; i < l; i++) {
+        Arrays.fill(subcolumnBuffer, 0L);
+        int currentBitWidth = bitWidthList[i];
+        if (encodingType[i] == 0) {
+          decodePos =
+              decodeBitPacking(deltaBuf, decodePos, currentBitWidth, packNum, subcolumnBuffer);
+        } else if (encodingType[i] == 1) {
+          int runCount = ((deltaBuf[decodePos] & 0xFF) << 8) | (deltaBuf[decodePos + 1] & 0xFF);
+          decodePos += 2;
+
+          int[] runLength = new int[runCount];
+          long[] rleValues = new long[runCount];
+          decodePos =
+              decodeBitPacking(deltaBuf, decodePos, runLengthBitWidth, runCount, runLength);
+          decodePos = decodeBitPacking(deltaBuf, decodePos, currentBitWidth, runCount, rleValues);
+
+          int currentIndex = 0;
+          for (int j = 0; j < runCount; j++) {
+            int endPos = runLength[j];
+            long value = rleValues[j];
+            while (currentIndex < endPos) {
+              subcolumnBuffer[currentIndex++] = value;
+            }
+          }
+        } else {
+          int cardinality =
+              ((deltaBuf[decodePos] & 0xFF) << 8) | (deltaBuf[decodePos + 1] & 0xFF);
+          decodePos += 2;
+
+          int dictBitWidth = getValueWidth(cardinality);
+          long[] dictKeyList = new long[cardinality];
+          decodePos =
+              decodeBitPacking(deltaBuf, decodePos, currentBitWidth, cardinality, dictKeyList);
+          decodePos = decodeBitPacking(deltaBuf, decodePos, dictBitWidth, packNum, subcolumnBuffer);
+
+          for (int j = 0; j < packNum; j++) {
+            subcolumnBuffer[j] = dictKeyList[(int) subcolumnBuffer[j]];
+          }
+        }
+
         int shiftAmount = i * beta;
         for (int j = 0; j < packNum; j++) {
-          data[j] |= subcolumnList[i][j] << shiftAmount;
+          data[j] |= subcolumnBuffer[j] << shiftAmount;
         }
       }
     }

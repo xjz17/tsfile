@@ -78,6 +78,8 @@ public abstract class TSEncodingBuilder {
         return new Sprintz();
       case RLBE:
         return new RLBE();
+      case SUBCOLUMN:
+        return new SUBCOLUMN();
       default:
         throw new UnsupportedOperationException(type.toString());
     }
@@ -422,6 +424,33 @@ public abstract class TSEncodingBuilder {
           return new LongChimpEncoder();
         default:
           throw new UnSupportedDataTypeException("CHIMP doesn't support data type: " + type);
+      }
+    }
+
+    @Override
+    public void initFromProps(Map<String, String> props) {
+      // allowed do nothing
+    }
+  }
+
+  public static class SUBCOLUMN extends TSEncodingBuilder {
+
+    private int maxPointNumber = 0;
+
+    @Override
+    public Encoder getEncoder(TSDataType type) {
+      switch (type) {
+        case INT32:
+        case DATE:
+          return new SubcolumnEncoder.IntSubcolumnEncoder();
+        case INT64:
+        case TIMESTAMP:
+          return new SubcolumnEncoder.LongSubcolumnEncoder();
+        case FLOAT:
+        case DOUBLE:
+          return new FloatEncoder(TSEncoding.SUBCOLUMN, type, maxPointNumber);
+        default:
+          throw new UnSupportedDataTypeException("SUBCOLUMN doesn't support data type: " + type);
       }
     }
 

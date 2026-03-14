@@ -136,6 +136,8 @@ public enum TSEncoding {
         return TSEncoding.SPRINTZ;
       case 13:
         return TSEncoding.RLBE;
+      case 14:
+        return TSEncoding.SUBCOLUMN;
       default:
         throw new IllegalArgumentException("Invalid input: " + encoding);
     }

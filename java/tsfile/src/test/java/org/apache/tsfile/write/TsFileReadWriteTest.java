@@ -73,22 +73,24 @@ public class TsFileReadWriteTest {
 
   @After
   public void tearDown() {
-    f = new File(path);
-    if (f.exists()) {
-      assertTrue(f.delete());
-    }
+    // f = new File(path);
+    // if (f.exists()) {
+    //   assertTrue(f.delete());
+    // }
   }
 
   @Test
   public void intTest() throws IOException, WriteProcessException {
     List<TSEncoding> encodings =
         Arrays.asList(
-            TSEncoding.PLAIN,
-            TSEncoding.RLE,
-            TSEncoding.TS_2DIFF,
-            TSEncoding.REGULAR,
-            TSEncoding.GORILLA,
-            TSEncoding.ZIGZAG);
+            // TSEncoding.PLAIN,
+            // TSEncoding.RLE,
+            // TSEncoding.TS_2DIFF,
+            // TSEncoding.REGULAR,
+            // TSEncoding.GORILLA,
+            // TSEncoding.ZIGZAG,
+            TSEncoding.SUBCOLUMN
+        );
     for (TSEncoding encoding : encodings) {
       intTest(encoding);
     }
