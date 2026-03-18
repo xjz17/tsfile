@@ -32,7 +32,8 @@ import java.util.Arrays;
 
 public abstract class SubcolumnEncoder extends Encoder {
 
-  protected static final int BLOCK_DEFAULT_SIZE = 128;
+  // protected static final int BLOCK_DEFAULT_SIZE = 128;
+  protected static final int BLOCK_DEFAULT_SIZE = 512;
 
   private static final int[] DEFAULT_THRESHOLD = {
     2, 3, 5, 8, 9, 11, 14, 16, 17, 17, 18, 19, 20, 21, 22, 22,
@@ -237,6 +238,9 @@ public abstract class SubcolumnEncoder extends Encoder {
       return encodePos;
     }
 
+    int bytesToWrite = bytesForBitPacking(bitWidth, numValues);
+    Arrays.fill(encodedResult, encodePos, encodePos + bytesToWrite, (byte) 0);
+
     int blockNum = numValues / 8;
     int remainder = numValues % 8;
 
@@ -300,6 +304,9 @@ public abstract class SubcolumnEncoder extends Encoder {
       return encodePos;
     }
 
+    int bytesToWrite = bytesForBitPacking(bitWidth, numValues);
+    Arrays.fill(encodedResult, encodePos, encodePos + bytesToWrite, (byte) 0);
+
     int blockNum = numValues / 8;
     int remainder = numValues % 8;
 
@@ -321,6 +328,17 @@ public abstract class SubcolumnEncoder extends Encoder {
   public static class IntSubcolumnEncoder extends SubcolumnEncoder {
 
     private final int[] deltaBlockBuffer;
+    private final int[] bpeCostSingle = new int[Integer.SIZE];
+    private final int[] rleCostSingle = new int[Integer.SIZE];
+    private final int[] deCostSingle = new int[Integer.SIZE];
+    private final int[] encodingTypeBuffer = new int[Integer.SIZE];
+    private final int[] candidateEncodingTypeBuffer = new int[Integer.SIZE];
+    private final int[] bitWidthListBuffer = new int[Integer.SIZE];
+    private final int[] subcolumnBuffer;
+    private final int[] runLengthBuffer;
+    private final int[] rleValuesBuffer;
+    private final int[] dictKeyListBuffer = new int[1 << BETA_LIST[BETA_LIST.length - 1]];
+    private final int[] codeMapBuffer = new int[1 << BETA_LIST[BETA_LIST.length - 1]];
     private int minDeltaBase;
 
     public IntSubcolumnEncoder() {
@@ -330,17 +348,22 @@ public abstract class SubcolumnEncoder extends Encoder {
     public IntSubcolumnEncoder(int size) {
       super(size);
       deltaBlockBuffer = new int[this.blockSize];
+      subcolumnBuffer = new int[this.blockSize];
+      runLengthBuffer = new int[this.blockSize];
+      rleValuesBuffer = new int[this.blockSize];
       encodingBlockBuffer = new byte[Math.max(blockSize * Integer.BYTES + 256, 512)];
       reset();
     }
 
     @Override
     protected int calculateBitWidthsForDeltaBlockBuffer() {
-      int width = 0;
+      int maxValue = 0;
       for (int i = 0; i < writeIndex; i++) {
-        width = Math.max(width, getValueWidth(deltaBlockBuffer[i]));
+        if (deltaBlockBuffer[i] > maxValue) {
+          maxValue = deltaBlockBuffer[i];
+        }
       }
-      return width;
+      return getValueWidth(maxValue);
     }
 
     private void calcDelta(int value) {
@@ -360,8 +383,6 @@ public abstract class SubcolumnEncoder extends Encoder {
     @Override
     protected void reset() {
       minDeltaBase = Integer.MAX_VALUE;
-      Arrays.fill(deltaBlockBuffer, 0);
-      Arrays.fill(encodingBlockBuffer, (byte) 0);
     }
 
     private int getValueWidth(int value) {
@@ -369,10 +390,11 @@ public abstract class SubcolumnEncoder extends Encoder {
     }
 
     private int countGroupedRuns(int shiftAmount, int mask) {
-      int previous = (deltaBlockBuffer[0] >>> shiftAmount) & mask;
+      int[] values = deltaBlockBuffer;
+      int previous = (values[0] >>> shiftAmount) & mask;
       int runs = 1;
       for (int i = 1; i < writeIndex; i++) {
-        int current = (deltaBlockBuffer[i] >>> shiftAmount) & mask;
+        int current = (values[i] >>> shiftAmount) & mask;
         if (current != previous) {
           runs++;
           previous = current;
@@ -382,10 +404,11 @@ public abstract class SubcolumnEncoder extends Encoder {
     }
 
     private int countDistinctValuesUntilLimit(int shiftAmount, int mask, int limit) {
+      int[] values = deltaBlockBuffer;
       int seenMask = 0;
       int distinctCount = 0;
       for (int i = 0; i < writeIndex; i++) {
-        int value = (deltaBlockBuffer[i] >>> shiftAmount) & mask;
+        int value = (values[i] >>> shiftAmount) & mask;
         int bit = 1 << value;
         if ((seenMask & bit) == 0) {
           seenMask |= bit;
@@ -404,20 +427,18 @@ public abstract class SubcolumnEncoder extends Encoder {
       }
 
       int betaBest = 1;
-      int[] bpeCostSingle = new int[writeWidth];
-      int[] rleCostSingle = new int[writeWidth];
-      int[] deCostSingle = new int[writeWidth];
+      int[] values = deltaBlockBuffer;
       int lengthBitWidth = getValueWidth(writeIndex);
       int cost1 = 0;
 
       for (int i = 0; i < writeWidth; i++) {
-        int currentValue = (deltaBlockBuffer[0] >>> i) & 1;
+        int currentValue = (values[0] >>> i) & 1;
         boolean hasOne = currentValue == 1;
         int runCount = 1;
         boolean changed = false;
 
         for (int j = 1; j < writeIndex; j++) {
-          int subcolumnValue = (deltaBlockBuffer[j] >>> i) & 1;
+          int subcolumnValue = (values[j] >>> i) & 1;
           if (subcolumnValue == 1) {
             hasOne = true;
           }
@@ -453,7 +474,7 @@ public abstract class SubcolumnEncoder extends Encoder {
 
         int l = (writeWidth + beta - 1) / beta;
         int cost = 0;
-        int[] currentEncodingType = new int[l];
+        Arrays.fill(candidateEncodingTypeBuffer, 0, l, 0);
         int mask = (1 << beta) - 1;
 
         for (int i = 0; i < l; i++) {
@@ -479,7 +500,7 @@ public abstract class SubcolumnEncoder extends Encoder {
             int rleCost = runCount * (beta + lengthBitWidth);
             if (rleCost < currentCost) {
               currentCost = rleCost;
-              currentEncodingType[i] = 1;
+              candidateEncodingTypeBuffer[i] = 1;
             }
           }
 
@@ -495,7 +516,7 @@ public abstract class SubcolumnEncoder extends Encoder {
               int deCost = writeIndex * getValueWidth(distinctCount) + distinctCount * beta;
               if (deCost < currentCost) {
                 currentCost = deCost;
-                currentEncodingType[i] = 2;
+                candidateEncodingTypeBuffer[i] = 2;
               }
             }
           }
@@ -507,7 +528,7 @@ public abstract class SubcolumnEncoder extends Encoder {
           minCost = cost;
           betaBest = beta;
           Arrays.fill(encodingType, 0);
-          System.arraycopy(currentEncodingType, 0, encodingType, 0, l);
+          System.arraycopy(candidateEncodingTypeBuffer, 0, encodingType, 0, l);
         }
       }
 
@@ -516,13 +537,14 @@ public abstract class SubcolumnEncoder extends Encoder {
 
     @Override
     protected void writeValueToBytes() throws IOException {
-      int[] encodingType = new int[writeWidth];
+      int[] encodingType = encodingTypeBuffer;
       int beta = selectBetaAndTypes(encodingType);
       int l = (writeWidth + beta - 1) / beta;
-      int[] bitWidthList = new int[l];
-      int[] subcolumnBuffer = new int[writeIndex];
-      int[] runLength = new int[writeIndex];
-      int[] rleValues = new int[writeIndex];
+      int[] bitWidthList = bitWidthListBuffer;
+      int[] subcolumnBuffer = this.subcolumnBuffer;
+      int[] runLength = runLengthBuffer;
+      int[] rleValues = rleValuesBuffer;
+      int[] values = deltaBlockBuffer;
       int mask = (1 << beta) - 1;
       int encodePos = 0;
 
@@ -533,7 +555,7 @@ public abstract class SubcolumnEncoder extends Encoder {
         int maxValuePart = 0;
         int shiftAmount = i * beta;
         for (int j = 0; j < writeIndex; j++) {
-          int current = (deltaBlockBuffer[j] >>> shiftAmount) & mask;
+          int current = (values[j] >>> shiftAmount) & mask;
           if (current > maxValuePart) {
             maxValuePart = current;
           }
@@ -550,14 +572,13 @@ public abstract class SubcolumnEncoder extends Encoder {
       encodePos += encodingTypeBytes;
 
       int runLengthBitWidth = getValueWidth(writeIndex);
-      boolean[] seenValues = new boolean[mask + 1];
-      int[] dictKeyList = new int[mask + 1];
-      int[] codeMap = new int[mask + 1];
+      int[] dictKeyList = dictKeyListBuffer;
+      int[] codeMap = codeMapBuffer;
 
       for (int i = 0; i < l; i++) {
         int shiftAmount = i * beta;
         for (int j = 0; j < writeIndex; j++) {
-          subcolumnBuffer[j] = (deltaBlockBuffer[j] >>> shiftAmount) & mask;
+          subcolumnBuffer[j] = (values[j] >>> shiftAmount) & mask;
         }
 
         int currentBitWidth = bitWidthList[i];
@@ -597,12 +618,13 @@ public abstract class SubcolumnEncoder extends Encoder {
           continue;
         }
 
-        Arrays.fill(seenValues, false);
+        int seenMask = 0;
         int cardinality = 0;
         for (int j = 0; j < writeIndex; j++) {
           int current = subcolumnBuffer[j];
-          if (!seenValues[current]) {
-            seenValues[current] = true;
+          int bit = 1 << current;
+          if ((seenMask & bit) == 0) {
+            seenMask |= bit;
             cardinality++;
           }
         }
@@ -610,7 +632,7 @@ public abstract class SubcolumnEncoder extends Encoder {
         int dictBitWidth = getValueWidth(cardinality);
         int dictSize = 0;
         for (int value = 0; value <= mask; value++) {
-          if (seenValues[value]) {
+          if ((seenMask & (1 << value)) != 0) {
             dictKeyList[dictSize] = value;
             codeMap[value] = dictSize;
             dictSize++;
@@ -668,6 +690,17 @@ public abstract class SubcolumnEncoder extends Encoder {
   public static class LongSubcolumnEncoder extends SubcolumnEncoder {
 
     private final long[] deltaBlockBuffer;
+    private final int[] bpeCostSingle = new int[Long.SIZE];
+    private final int[] rleCostSingle = new int[Long.SIZE];
+    private final int[] deCostSingle = new int[Long.SIZE];
+    private final int[] encodingTypeBuffer = new int[Long.SIZE];
+    private final int[] candidateEncodingTypeBuffer = new int[Long.SIZE];
+    private final int[] bitWidthListBuffer = new int[Long.SIZE];
+    private final long[] subcolumnBuffer;
+    private final int[] runLengthBuffer;
+    private final long[] rleValuesBuffer;
+    private final long[] dictKeyListBuffer = new long[1 << BETA_LIST[BETA_LIST.length - 1]];
+    private final int[] codeMapBuffer = new int[1 << BETA_LIST[BETA_LIST.length - 1]];
     private long minDeltaBase;
 
     public LongSubcolumnEncoder() {
@@ -677,17 +710,22 @@ public abstract class SubcolumnEncoder extends Encoder {
     public LongSubcolumnEncoder(int size) {
       super(size);
       deltaBlockBuffer = new long[this.blockSize];
+      subcolumnBuffer = new long[this.blockSize];
+      runLengthBuffer = new int[this.blockSize];
+      rleValuesBuffer = new long[this.blockSize];
       encodingBlockBuffer = new byte[Math.max(blockSize * Long.BYTES + 512, 1024)];
       reset();
     }
 
     @Override
     protected int calculateBitWidthsForDeltaBlockBuffer() {
-      int width = 0;
+      long maxValue = 0;
       for (int i = 0; i < writeIndex; i++) {
-        width = Math.max(width, getValueWidth(deltaBlockBuffer[i]));
+        if (deltaBlockBuffer[i] > maxValue) {
+          maxValue = deltaBlockBuffer[i];
+        }
       }
-      return width;
+      return getValueWidth(maxValue);
     }
 
     private void calcDelta(long value) {
@@ -707,8 +745,6 @@ public abstract class SubcolumnEncoder extends Encoder {
     @Override
     protected void reset() {
       minDeltaBase = Long.MAX_VALUE;
-      Arrays.fill(deltaBlockBuffer, 0L);
-      Arrays.fill(encodingBlockBuffer, (byte) 0);
     }
 
     private int getValueWidth(long value) {
@@ -716,10 +752,11 @@ public abstract class SubcolumnEncoder extends Encoder {
     }
 
     private int countGroupedRuns(int shiftAmount, int mask) {
-      int previous = (int) ((deltaBlockBuffer[0] >>> shiftAmount) & mask);
+      long[] values = deltaBlockBuffer;
+      int previous = (int) ((values[0] >>> shiftAmount) & mask);
       int runs = 1;
       for (int i = 1; i < writeIndex; i++) {
-        int current = (int) ((deltaBlockBuffer[i] >>> shiftAmount) & mask);
+        int current = (int) ((values[i] >>> shiftAmount) & mask);
         if (current != previous) {
           runs++;
           previous = current;
@@ -729,10 +766,11 @@ public abstract class SubcolumnEncoder extends Encoder {
     }
 
     private int countDistinctValuesUntilLimit(int shiftAmount, int mask, int limit) {
+      long[] values = deltaBlockBuffer;
       int seenMask = 0;
       int distinctCount = 0;
       for (int i = 0; i < writeIndex; i++) {
-        int value = (int) ((deltaBlockBuffer[i] >>> shiftAmount) & mask);
+        int value = (int) ((values[i] >>> shiftAmount) & mask);
         int bit = 1 << value;
         if ((seenMask & bit) == 0) {
           seenMask |= bit;
@@ -751,20 +789,18 @@ public abstract class SubcolumnEncoder extends Encoder {
       }
 
       int betaBest = 1;
-      int[] bpeCostSingle = new int[writeWidth];
-      int[] rleCostSingle = new int[writeWidth];
-      int[] deCostSingle = new int[writeWidth];
+      long[] values = deltaBlockBuffer;
       int lengthBitWidth = getValueWidth(writeIndex);
       int cost1 = 0;
 
       for (int i = 0; i < writeWidth; i++) {
-        int currentValue = (int) ((deltaBlockBuffer[0] >>> i) & 1L);
+        int currentValue = (int) ((values[0] >>> i) & 1L);
         boolean hasOne = currentValue == 1;
         int runCount = 1;
         boolean changed = false;
 
         for (int j = 1; j < writeIndex; j++) {
-          int subcolumnValue = (int) ((deltaBlockBuffer[j] >>> i) & 1L);
+          int subcolumnValue = (int) ((values[j] >>> i) & 1L);
           if (subcolumnValue == 1) {
             hasOne = true;
           }
@@ -800,7 +836,7 @@ public abstract class SubcolumnEncoder extends Encoder {
 
         int l = (writeWidth + beta - 1) / beta;
         int cost = 0;
-        int[] currentEncodingType = new int[l];
+        Arrays.fill(candidateEncodingTypeBuffer, 0, l, 0);
         int mask = (1 << beta) - 1;
 
         for (int i = 0; i < l; i++) {
@@ -826,7 +862,7 @@ public abstract class SubcolumnEncoder extends Encoder {
             int rleCost = runCount * (beta + lengthBitWidth);
             if (rleCost < currentCost) {
               currentCost = rleCost;
-              currentEncodingType[i] = 1;
+              candidateEncodingTypeBuffer[i] = 1;
             }
           }
 
@@ -842,7 +878,7 @@ public abstract class SubcolumnEncoder extends Encoder {
               int deCost = writeIndex * getValueWidth(distinctCount) + distinctCount * beta;
               if (deCost < currentCost) {
                 currentCost = deCost;
-                currentEncodingType[i] = 2;
+                candidateEncodingTypeBuffer[i] = 2;
               }
             }
           }
@@ -854,7 +890,7 @@ public abstract class SubcolumnEncoder extends Encoder {
           minCost = cost;
           betaBest = beta;
           Arrays.fill(encodingType, 0);
-          System.arraycopy(currentEncodingType, 0, encodingType, 0, l);
+          System.arraycopy(candidateEncodingTypeBuffer, 0, encodingType, 0, l);
         }
       }
 
@@ -863,13 +899,14 @@ public abstract class SubcolumnEncoder extends Encoder {
 
     @Override
     protected void writeValueToBytes() throws IOException {
-      int[] encodingType = new int[writeWidth];
+      int[] encodingType = encodingTypeBuffer;
       int beta = selectBetaAndTypes(encodingType);
       int l = (writeWidth + beta - 1) / beta;
-      int[] bitWidthList = new int[l];
-      long[] subcolumnBuffer = new long[writeIndex];
-      int[] runLength = new int[writeIndex];
-      long[] rleValues = new long[writeIndex];
+      int[] bitWidthList = bitWidthListBuffer;
+      long[] subcolumnBuffer = this.subcolumnBuffer;
+      int[] runLength = runLengthBuffer;
+      long[] rleValues = rleValuesBuffer;
+      long[] values = deltaBlockBuffer;
       int mask = (1 << beta) - 1;
       int encodePos = 0;
 
@@ -880,7 +917,7 @@ public abstract class SubcolumnEncoder extends Encoder {
         long maxValuePart = 0;
         int shiftAmount = i * beta;
         for (int j = 0; j < writeIndex; j++) {
-          long current = (deltaBlockBuffer[j] >>> shiftAmount) & mask;
+          long current = (values[j] >>> shiftAmount) & mask;
           if (current > maxValuePart) {
             maxValuePart = current;
           }
@@ -897,14 +934,13 @@ public abstract class SubcolumnEncoder extends Encoder {
       encodePos += encodingTypeBytes;
 
       int runLengthBitWidth = getValueWidth(writeIndex);
-      boolean[] seenValues = new boolean[mask + 1];
-      long[] dictKeyList = new long[mask + 1];
-      int[] codeMap = new int[mask + 1];
+      long[] dictKeyList = dictKeyListBuffer;
+      int[] codeMap = codeMapBuffer;
 
       for (int i = 0; i < l; i++) {
         int shiftAmount = i * beta;
         for (int j = 0; j < writeIndex; j++) {
-          subcolumnBuffer[j] = (deltaBlockBuffer[j] >>> shiftAmount) & mask;
+          subcolumnBuffer[j] = (values[j] >>> shiftAmount) & mask;
         }
 
         int currentBitWidth = bitWidthList[i];
@@ -944,12 +980,13 @@ public abstract class SubcolumnEncoder extends Encoder {
           continue;
         }
 
-        Arrays.fill(seenValues, false);
+        int seenMask = 0;
         int cardinality = 0;
         for (int j = 0; j < writeIndex; j++) {
           int current = (int) subcolumnBuffer[j];
-          if (!seenValues[current]) {
-            seenValues[current] = true;
+          int bit = 1 << current;
+          if ((seenMask & bit) == 0) {
+            seenMask |= bit;
             cardinality++;
           }
         }
@@ -957,7 +994,7 @@ public abstract class SubcolumnEncoder extends Encoder {
         int dictBitWidth = getValueWidth(cardinality);
         int dictSize = 0;
         for (int value = 0; value <= mask; value++) {
-          if (seenValues[value]) {
+          if ((seenMask & (1 << value)) != 0) {
             dictKeyList[dictSize] = value;
             codeMap[value] = dictSize;
             dictSize++;

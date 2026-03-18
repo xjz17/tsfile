@@ -29,6 +29,8 @@ import org.apache.tsfile.read.common.Path;
 import org.apache.tsfile.read.common.RowRecord;
 import org.apache.tsfile.read.expression.QueryExpression;
 import org.apache.tsfile.read.query.dataset.QueryDataSet;
+import org.apache.tsfile.read.reader.LocalTsFileInput;
+import org.apache.tsfile.read.reader.TsFileInput;
 import org.apache.tsfile.write.record.TSRecord;
 import org.apache.tsfile.write.record.datapoint.IntDataPoint;
 import org.apache.tsfile.write.schema.MeasurementSchema;
@@ -44,12 +46,11 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.lang.management.ManagementFactory;
-import java.lang.management.ThreadMXBean;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -59,25 +60,26 @@ public class CsvReadWriteTest {
 
   private static final String PARENT_DIR = "D://github/xjz17/subcolumn/";
   private static final String INPUT_PARENT_DIR = PARENT_DIR + "dataset/";
+  // private static final String INPUT_PARENT_DIR = PARENT_DIR + "dataset_long/";
   private static final String OUTPUT_PARENT_DIR = PARENT_DIR + "result/tsfile_read_write/";
   private static final String TSFILE_OUTPUT_DIR = OUTPUT_PARENT_DIR + "tsfiles/";
   private static final String RESULT_CSV_PATH = OUTPUT_PARENT_DIR + "write_time.csv";
   private static final String READ_RESULT_CSV_PATH = OUTPUT_PARENT_DIR + "read_time.csv";
-  private static final int REPEAT_TIMES = 100;
+  // private static final int REPEAT_TIMES = 100;
+  private static final int REPEAT_TIMES = 200;
   private static final String DEVICE_NAME = "device_1";
   private static final String MEASUREMENT_NAME = "sensor_1";
   private static final int MAX_DECIMAL_PRECISION = 8;
   private static final int FILE_OUTPUT_BUFFER_SIZE = 8192;
-  private static final ThreadMXBean THREAD_MX_BEAN = ManagementFactory.getThreadMXBean();
-  private static final boolean THREAD_CPU_TIME_AVAILABLE = initializeThreadCpuTime();
 
   private static final List<TSEncoding> ENCODINGS =
       Arrays.asList(
-          TSEncoding.SUBCOLUMN,
           TSEncoding.TS_2DIFF,
           TSEncoding.RLE,
           TSEncoding.GORILLA,
-          TSEncoding.CHIMP);
+          TSEncoding.CHIMP,
+          TSEncoding.SUBCOLUMN
+      );
 
   private final IDeviceID deviceID = Factory.DEFAULT_FACTORY.create(DEVICE_NAME);
 
@@ -118,49 +120,25 @@ public class CsvReadWriteTest {
           "Max Decimal Precision",
           "Multiplier",
           "TsFile Size Bytes",
-          "TsFile Path"
+          // "TsFile Path"
         });
 
     try {
       for (File datasetFile : csvFiles) {
-        ArrayList<Double> rawValues = new ArrayList<>();
-        int maxDecimalPrecision = 0;
-
-        InputStream inputStream = Files.newInputStream(datasetFile.toPath());
-        CsvReader loader = new CsvReader(inputStream, StandardCharsets.UTF_8);
-        try {
-          while (loader.readRecord()) {
-            String[] values = loader.getValues();
-            if (values.length == 0) {
-              continue;
-            }
-
-            String value = values[0].trim();
-            if (value.isEmpty()) {
-              continue;
-            }
-
-            maxDecimalPrecision = Math.max(maxDecimalPrecision, getDecimalPrecision(value));
-            rawValues.add(Double.valueOf(value));
-          }
-        } finally {
-          loader.close();
-          inputStream.close();
-        }
-
-        int boundedPrecision = Math.min(maxDecimalPrecision, MAX_DECIMAL_PRECISION);
-        long multiplier = (long) Math.pow(10, boundedPrecision);
-        int[] processedValues = new int[rawValues.size()];
-        for (int i = 0; i < rawValues.size(); i++) {
-          processedValues[i] = (int) (rawValues.get(i) * multiplier);
-        }
+        DatasetProfile datasetProfile = analyzeDataset(datasetFile);
+        int boundedPrecision = Math.min(datasetProfile.getMaxDecimalPrecision(), MAX_DECIMAL_PRECISION);
+        long multiplier = getMultiplier(boundedPrecision);
 
         String datasetName = extractFileName(datasetFile.getName());
+        System.out.printf(
+            "Writing dataset=%s, points=%d, precision=%d%n",
+            datasetName, datasetProfile.getPointCount(), boundedPrecision);
         for (TSEncoding encoding : ENCODINGS) {
+          System.out.printf("  Encoding=%s%n", encoding.name());
           java.nio.file.Path tsFilePath =
               Paths.get(TSFILE_OUTPUT_DIR, datasetName + "_" + encoding.name().toLowerCase() + ".tsfile");
           WriteBenchmarkResult benchmarkResult =
-              benchmarkWrite(tsFilePath.toFile(), encoding, processedValues);
+              benchmarkWrite(tsFilePath.toFile(), encoding, datasetFile, multiplier);
 
           writer.writeRecord(
               new String[] {
@@ -172,11 +150,11 @@ public class CsvReadWriteTest {
                 String.valueOf(benchmarkResult.getIoWriteNanos()),
                 String.valueOf(benchmarkResult.getIoFlushNanos()),
                 String.valueOf(benchmarkResult.getIoForceNanos()),
-                String.valueOf(processedValues.length),
+                String.valueOf(datasetProfile.getPointCount()),
                 String.valueOf(boundedPrecision),
                 String.valueOf(multiplier),
                 String.valueOf(benchmarkResult.getTsFileSizeBytes()),
-                tsFilePath.toString()
+                // tsFilePath.toString()
               });
         }
       }
@@ -204,29 +182,44 @@ public class CsvReadWriteTest {
         new String[] {
           "Dataset",
           "Encoding Algorithm",
-          "Read Time Nanos",
+          "Read Total Time Nanos",
+          "Read CPU Time Nanos",
+          "Read IO Time Nanos",
+          "Read IO Read Nanos",
           "Points",
           "TsFile Size Bytes",
-          "TsFile Path"
+          // "TsFile Path"
         });
 
     try {
       for (File tsFile : tsFiles) {
-        long elapsedNanos = benchmarkRead(tsFile);
-        long pointCount = readTsFile(tsFile);
+        ReadBenchmarkResult benchmarkResult = benchmarkRead(tsFile);
         String fileName = extractFileName(tsFile.getName());
         int splitIndex = fileName.lastIndexOf('_');
         String datasetName = splitIndex >= 0 ? fileName.substring(0, splitIndex) : fileName;
         String encodingName = splitIndex >= 0 ? fileName.substring(splitIndex + 1) : "unknown";
 
+        System.out.printf("Reading tsfile=%s%n", tsFile.getName());
+
+        if (datasetName.endsWith("_ts")) {
+          datasetName = datasetName.substring(0, datasetName.length() - 3);
+        }
+
+        if (encodingName.equals("2diff")) {
+          encodingName = "ts_2diff";
+        }
+
         writer.writeRecord(
             new String[] {
               datasetName,
               encodingName.toUpperCase(),
-              String.valueOf(elapsedNanos),
-              String.valueOf(pointCount),
-              String.valueOf(Files.size(tsFile.toPath())),
-              tsFile.toPath().toString()
+              String.valueOf(benchmarkResult.getTotalTimeNanos()),
+              String.valueOf(benchmarkResult.getCpuTimeNanos()),
+              String.valueOf(benchmarkResult.getIoTimeNanos()),
+              String.valueOf(benchmarkResult.getIoReadNanos()),
+              String.valueOf(benchmarkResult.getPointCount()),
+              String.valueOf(benchmarkResult.getTsFileSizeBytes()),
+              // tsFile.toPath().toString()
             });
       }
     } finally {
@@ -234,7 +227,8 @@ public class CsvReadWriteTest {
     }
   }
 
-  private WriteBenchmarkResult benchmarkWrite(File tsFile, TSEncoding encoding, int[] processedValues)
+  private WriteBenchmarkResult benchmarkWrite(
+      File tsFile, TSEncoding encoding, File datasetFile, long multiplier)
       throws IOException, WriteProcessException {
     long totalTimeNanos = 0;
     long totalCpuTimeNanos = 0;
@@ -243,8 +237,11 @@ public class CsvReadWriteTest {
     long totalIoForceNanos = 0;
 
     for (int repeat = 0; repeat < REPEAT_TIMES; repeat++) {
+      // System.out.printf(
+      //     "    Write repeat %d/%d, file=%s, encoding=%s%n",
+      //     repeat + 1, REPEAT_TIMES, datasetFile.getName(), encoding.name());
       Files.deleteIfExists(tsFile.toPath());
-      WriteBenchmarkResult singleRunResult = writeTsFile(tsFile, encoding, processedValues);
+      WriteBenchmarkResult singleRunResult = writeTsFile(tsFile, encoding, datasetFile, multiplier);
       totalTimeNanos += singleRunResult.getTotalTimeNanos();
       totalCpuTimeNanos += singleRunResult.getCpuTimeNanos();
       totalIoWriteNanos += singleRunResult.getIoWriteNanos();
@@ -262,33 +259,68 @@ public class CsvReadWriteTest {
         tsFileSizeBytes);
   }
 
-  private long benchmarkRead(File tsFile) throws IOException {
-    long startNanos = System.nanoTime();
+  private ReadBenchmarkResult benchmarkRead(File tsFile) throws IOException {
+    long totalTimeNanos = 0;
+    long totalCpuTimeNanos = 0;
+    long totalIoReadNanos = 0;
+    long pointCount = -1;
+
     for (int repeat = 0; repeat < REPEAT_TIMES; repeat++) {
-      readTsFile(tsFile);
+      System.out.printf("    Read repeat %d/%d, file=%s%n", repeat + 1, REPEAT_TIMES, tsFile.getName());
+      ReadBenchmarkResult singleRunResult = readTsFile(tsFile);
+      totalTimeNanos += singleRunResult.getTotalTimeNanos();
+      totalCpuTimeNanos += singleRunResult.getCpuTimeNanos();
+      totalIoReadNanos += singleRunResult.getIoReadNanos();
+      pointCount = singleRunResult.getPointCount();
     }
-    return (System.nanoTime() - startNanos) / REPEAT_TIMES;
+
+    return new ReadBenchmarkResult(
+        totalTimeNanos / REPEAT_TIMES,
+        totalCpuTimeNanos / REPEAT_TIMES,
+        totalIoReadNanos / REPEAT_TIMES,
+        pointCount,
+        Files.size(tsFile.toPath()));
   }
 
-  private WriteBenchmarkResult writeTsFile(File tsFile, TSEncoding encoding, int[] processedValues)
+  private WriteBenchmarkResult writeTsFile(
+      File tsFile, TSEncoding encoding, File datasetFile, long multiplier)
       throws IOException, WriteProcessException {
     ProfilingTsFileOutput profilingOutput = new ProfilingTsFileOutput(tsFile);
-    long startNanos = System.nanoTime();
-    long startCpuTimeNanos = currentThreadCpuTime();
+    long writeTimeNanos = 0;
 
     try (TsFileWriter tsFileWriter = new TsFileWriter(profilingOutput, new Schema())) {
       tsFileWriter.registerTimeseries(
           new Path(deviceID),
           new MeasurementSchema(MEASUREMENT_NAME, TSDataType.INT32, encoding));
-      for (int i = 0; i < processedValues.length; i++) {
-        TSRecord record = new TSRecord(deviceID, i + 1L);
-        record.addTuple(new IntDataPoint(MEASUREMENT_NAME, processedValues[i]));
-        tsFileWriter.writeRecord(record);
+      try (InputStream inputStream = Files.newInputStream(datasetFile.toPath())) {
+        CsvReader loader = new CsvReader(inputStream, StandardCharsets.UTF_8);
+        long timestamp = 1L;
+        try {
+          while (true) {
+            boolean hasRecord = loader.readRecord();
+            if (!hasRecord) {
+              break;
+            }
+
+            String value = getFirstColumnValue(loader);
+            if (value == null) {
+              continue;
+            }
+
+            long writeStartNanos = System.nanoTime();
+            TSRecord record = new TSRecord(deviceID, timestamp++);
+            record.addTuple(new IntDataPoint(MEASUREMENT_NAME, scaleValue(value, multiplier)));
+            tsFileWriter.writeRecord(record);
+            writeTimeNanos += System.nanoTime() - writeStartNanos;
+          }
+        } finally {
+          loader.close();
+        }
       }
     }
 
-    long totalTimeNanos = System.nanoTime() - startNanos;
-    long cpuTimeNanos = currentThreadCpuTime() - startCpuTimeNanos;
+    long totalTimeNanos = writeTimeNanos;
+    long cpuTimeNanos = Math.max(0L, totalTimeNanos - profilingOutput.getIoTimeNanos());
     return new WriteBenchmarkResult(
         totalTimeNanos,
         cpuTimeNanos,
@@ -298,8 +330,11 @@ public class CsvReadWriteTest {
         Files.size(tsFile.toPath()));
   }
 
-  private long readTsFile(File tsFile) throws IOException {
-    try (TsFileSequenceReader reader = new TsFileSequenceReader(tsFile.getPath());
+  private ReadBenchmarkResult readTsFile(File tsFile) throws IOException {
+    ProfilingTsFileInput profilingInput = new ProfilingTsFileInput(tsFile);
+    long startNanos = System.nanoTime();
+
+    try (TsFileSequenceReader reader = new TsFileSequenceReader(profilingInput);
         TsFileReader tsFileReader = new TsFileReader(reader)) {
       ArrayList<Path> paths = new ArrayList<>();
       paths.add(new Path(deviceID, MEASUREMENT_NAME, true));
@@ -313,7 +348,14 @@ public class CsvReadWriteTest {
           pointCount++;
         }
       }
-      return pointCount;
+      long totalTimeNanos = System.nanoTime() - startNanos;
+      long cpuTimeNanos = Math.max(0L, totalTimeNanos - profilingInput.getIoTimeNanos());
+      return new ReadBenchmarkResult(
+          totalTimeNanos,
+          cpuTimeNanos,
+          profilingInput.getIoReadNanos(),
+          pointCount,
+          Files.size(tsFile.toPath()));
     }
   }
 
@@ -325,6 +367,52 @@ public class CsvReadWriteTest {
     return str.substring(decimalIndex + 1).length();
   }
 
+  private static DatasetProfile analyzeDataset(File datasetFile) throws IOException {
+    long pointCount = 0;
+    int maxDecimalPrecision = 0;
+
+    try (InputStream inputStream = Files.newInputStream(datasetFile.toPath())) {
+      CsvReader loader = new CsvReader(inputStream, StandardCharsets.UTF_8);
+      try {
+        while (loader.readRecord()) {
+          String value = getFirstColumnValue(loader);
+          if (value == null) {
+            continue;
+          }
+
+          pointCount++;
+          maxDecimalPrecision = Math.max(maxDecimalPrecision, getDecimalPrecision(value));
+        }
+      } finally {
+        loader.close();
+      }
+    }
+
+    return new DatasetProfile(pointCount, maxDecimalPrecision);
+  }
+
+  private static String getFirstColumnValue(CsvReader loader) throws IOException {
+    String[] values = loader.getValues();
+    if (values.length == 0) {
+      return null;
+    }
+
+    String value = values[0].trim();
+    return value.isEmpty() ? null : value;
+  }
+
+  private static long getMultiplier(int decimalPrecision) {
+    long multiplier = 1L;
+    for (int i = 0; i < decimalPrecision; i++) {
+      multiplier *= 10L;
+    }
+    return multiplier;
+  }
+
+  private static int scaleValue(String rawValue, long multiplier) {
+    return new BigDecimal(rawValue).multiply(BigDecimal.valueOf(multiplier)).intValue();
+  }
+
   private static String extractFileName(String path) {
     File file = new File(path);
     String fileName = file.getName();
@@ -333,24 +421,6 @@ public class CsvReadWriteTest {
       return fileName;
     }
     return fileName.substring(0, dotIndex);
-  }
-
-  private static boolean initializeThreadCpuTime() {
-    if (!THREAD_MX_BEAN.isCurrentThreadCpuTimeSupported()) {
-      return false;
-    }
-    if (!THREAD_MX_BEAN.isThreadCpuTimeEnabled()) {
-      try {
-        THREAD_MX_BEAN.setThreadCpuTimeEnabled(true);
-      } catch (UnsupportedOperationException | SecurityException e) {
-        return false;
-      }
-    }
-    return THREAD_MX_BEAN.isThreadCpuTimeEnabled();
-  }
-
-  private static long currentThreadCpuTime() {
-    return THREAD_CPU_TIME_AVAILABLE ? THREAD_MX_BEAN.getCurrentThreadCpuTime() : -1L;
   }
 
   private static final class WriteBenchmarkResult {
@@ -398,6 +468,69 @@ public class CsvReadWriteTest {
 
     private long getIoForceNanos() {
       return ioForceNanos;
+    }
+
+    private long getTsFileSizeBytes() {
+      return tsFileSizeBytes;
+    }
+  }
+
+  private static final class DatasetProfile {
+    private final long pointCount;
+    private final int maxDecimalPrecision;
+
+    private DatasetProfile(long pointCount, int maxDecimalPrecision) {
+      this.pointCount = pointCount;
+      this.maxDecimalPrecision = maxDecimalPrecision;
+    }
+
+    private long getPointCount() {
+      return pointCount;
+    }
+
+    private int getMaxDecimalPrecision() {
+      return maxDecimalPrecision;
+    }
+  }
+
+  private static final class ReadBenchmarkResult {
+    private final long totalTimeNanos;
+    private final long cpuTimeNanos;
+    private final long ioReadNanos;
+    private final long pointCount;
+    private final long tsFileSizeBytes;
+
+    private ReadBenchmarkResult(
+        long totalTimeNanos,
+        long cpuTimeNanos,
+        long ioReadNanos,
+        long pointCount,
+        long tsFileSizeBytes) {
+      this.totalTimeNanos = totalTimeNanos;
+      this.cpuTimeNanos = cpuTimeNanos;
+      this.ioReadNanos = ioReadNanos;
+      this.pointCount = pointCount;
+      this.tsFileSizeBytes = tsFileSizeBytes;
+    }
+
+    private long getTotalTimeNanos() {
+      return totalTimeNanos;
+    }
+
+    private long getCpuTimeNanos() {
+      return cpuTimeNanos;
+    }
+
+    private long getIoTimeNanos() {
+      return ioReadNanos;
+    }
+
+    private long getIoReadNanos() {
+      return ioReadNanos;
+    }
+
+    private long getPointCount() {
+      return pointCount;
     }
 
     private long getTsFileSizeBytes() {
@@ -542,12 +675,85 @@ public class CsvReadWriteTest {
       return ioWriteNanos;
     }
 
+    private long getIoTimeNanos() {
+      return ioWriteNanos + ioFlushNanos + ioForceNanos;
+    }
+
     private long getIoFlushNanos() {
       return ioFlushNanos;
     }
 
     private long getIoForceNanos() {
       return ioForceNanos;
+    }
+  }
+
+  private static final class ProfilingTsFileInput implements TsFileInput {
+    private final TsFileInput input;
+
+    private long ioReadNanos;
+
+    private ProfilingTsFileInput(File file) throws IOException {
+      this.input = new LocalTsFileInput(file.toPath());
+    }
+
+    @Override
+    public long size() throws IOException {
+      return input.size();
+    }
+
+    @Override
+    public long position() throws IOException {
+      return input.position();
+    }
+
+    @Override
+    public TsFileInput position(long newPosition) throws IOException {
+      input.position(newPosition);
+      return this;
+    }
+
+    @Override
+    public int read(ByteBuffer dst) throws IOException {
+      long ioStartNanos = System.nanoTime();
+      try {
+        return input.read(dst);
+      } finally {
+        ioReadNanos += System.nanoTime() - ioStartNanos;
+      }
+    }
+
+    @Override
+    public int read(ByteBuffer dst, long position) throws IOException {
+      long ioStartNanos = System.nanoTime();
+      try {
+        return input.read(dst, position);
+      } finally {
+        ioReadNanos += System.nanoTime() - ioStartNanos;
+      }
+    }
+
+    @Override
+    public InputStream wrapAsInputStream() throws IOException {
+      return input.wrapAsInputStream();
+    }
+
+    @Override
+    public void close() throws IOException {
+      input.close();
+    }
+
+    @Override
+    public String getFilePath() {
+      return input.getFilePath();
+    }
+
+    private long getIoReadNanos() {
+      return ioReadNanos;
+    }
+
+    private long getIoTimeNanos() {
+      return ioReadNanos;
     }
   }
 
