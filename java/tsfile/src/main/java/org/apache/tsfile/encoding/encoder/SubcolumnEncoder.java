@@ -34,6 +34,7 @@ public abstract class SubcolumnEncoder extends Encoder {
 
   // protected static final int BLOCK_DEFAULT_SIZE = 128;
   protected static final int BLOCK_DEFAULT_SIZE = 512;
+  // protected static final int BLOCK_DEFAULT_SIZE = 10;
 
   private static final int[] DEFAULT_THRESHOLD = {
     2, 3, 5, 8, 9, 11, 14, 16, 17, 17, 18, 19, 20, 21, 22, 22,

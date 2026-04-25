@@ -18,6 +18,8 @@
  */
 package org.apache.tsfile.write;
 
+import org.apache.tsfile.encoding.encoder.Encoder;
+import org.apache.tsfile.encoding.encoder.TSEncodingBuilder;
 import org.apache.tsfile.enums.TSDataType;
 import org.apache.tsfile.exception.write.WriteProcessException;
 import org.apache.tsfile.file.metadata.IDeviceID;
@@ -31,8 +33,10 @@ import org.apache.tsfile.read.expression.QueryExpression;
 import org.apache.tsfile.read.query.dataset.QueryDataSet;
 import org.apache.tsfile.read.reader.LocalTsFileInput;
 import org.apache.tsfile.read.reader.TsFileInput;
+import org.apache.tsfile.utils.NoSyncBufferedOutputStream;
 import org.apache.tsfile.write.record.TSRecord;
 import org.apache.tsfile.write.record.datapoint.IntDataPoint;
+import org.apache.tsfile.write.record.datapoint.LongDataPoint;
 import org.apache.tsfile.write.schema.MeasurementSchema;
 import org.apache.tsfile.write.schema.Schema;
 import org.apache.tsfile.write.writer.TsFileOutput;
@@ -41,6 +45,7 @@ import com.csvreader.CsvReader;
 import com.csvreader.CsvWriter;
 import org.junit.Test;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -59,18 +64,18 @@ import java.util.List;
 public class CsvReadWriteTest {
 
   private static final String PARENT_DIR = "D://github/xjz17/subcolumn/";
-  private static final String INPUT_PARENT_DIR = PARENT_DIR + "dataset/";
-  // private static final String INPUT_PARENT_DIR = PARENT_DIR + "dataset_long/";
+  private static final String INPUT_PARENT_DIR = PARENT_DIR + "dataset_tsfile/";
+
   private static final String OUTPUT_PARENT_DIR = PARENT_DIR + "result/tsfile_read_write/";
   private static final String TSFILE_OUTPUT_DIR = OUTPUT_PARENT_DIR + "tsfiles/";
-  private static final String RESULT_CSV_PATH = OUTPUT_PARENT_DIR + "write_time.csv";
+  // private static final String RESULT_CSV_PATH = OUTPUT_PARENT_DIR + "write_time.csv";
+  private static final String RESULT_CSV_PATH = OUTPUT_PARENT_DIR + "write_time_binary.csv";
   private static final String READ_RESULT_CSV_PATH = OUTPUT_PARENT_DIR + "read_time.csv";
-  // private static final int REPEAT_TIMES = 100;
-  private static final int REPEAT_TIMES = 200;
+  // private static final int REPEAT_TIMES = 200;
+  private static final int REPEAT_TIMES = 100;
   private static final String DEVICE_NAME = "device_1";
   private static final String MEASUREMENT_NAME = "sensor_1";
   private static final int MAX_DECIMAL_PRECISION = 8;
-  private static final int FILE_OUTPUT_BUFFER_SIZE = 8192;
 
   private static final List<TSEncoding> ENCODINGS =
       Arrays.asList(
@@ -111,16 +116,13 @@ public class CsvReadWriteTest {
           "Dataset",
           "Encoding Algorithm",
           "Write Total Time Nanos",
+          "Dataset Read Time Nanos",
           "Write CPU Time Nanos",
           "Write IO Time Nanos",
-          "Write IO Write Nanos",
-          "Write IO Flush Nanos",
-          "Write IO Force Nanos",
           "Points",
           "Max Decimal Precision",
           "Multiplier",
-          "TsFile Size Bytes",
-          // "TsFile Path"
+          "Binary File Size Bytes",
         });
 
     try {
@@ -135,8 +137,9 @@ public class CsvReadWriteTest {
             datasetName, datasetProfile.getPointCount(), boundedPrecision);
         for (TSEncoding encoding : ENCODINGS) {
           System.out.printf("  Encoding=%s%n", encoding.name());
+          // java.nio.file.Path tsFilePath = Paths.get(TSFILE_OUTPUT_DIR, datasetName + "_" + encoding.name().toLowerCase() + ".tsfile");
           java.nio.file.Path tsFilePath =
-              Paths.get(TSFILE_OUTPUT_DIR, datasetName + "_" + encoding.name().toLowerCase() + ".tsfile");
+              Paths.get(TSFILE_OUTPUT_DIR, datasetName + "_" + encoding.name().toLowerCase() + ".bin");
           WriteBenchmarkResult benchmarkResult =
               benchmarkWrite(tsFilePath.toFile(), encoding, datasetFile, multiplier);
 
@@ -145,16 +148,13 @@ public class CsvReadWriteTest {
                 datasetName,
                 encoding.name(),
                 String.valueOf(benchmarkResult.getTotalTimeNanos()),
+                String.valueOf(benchmarkResult.getDatasetReadTimeNanos()),
                 String.valueOf(benchmarkResult.getCpuTimeNanos()),
                 String.valueOf(benchmarkResult.getIoTimeNanos()),
-                String.valueOf(benchmarkResult.getIoWriteNanos()),
-                String.valueOf(benchmarkResult.getIoFlushNanos()),
-                String.valueOf(benchmarkResult.getIoForceNanos()),
                 String.valueOf(datasetProfile.getPointCount()),
                 String.valueOf(boundedPrecision),
                 String.valueOf(multiplier),
                 String.valueOf(benchmarkResult.getTsFileSizeBytes()),
-                // tsFilePath.toString()
               });
         }
       }
@@ -185,10 +185,8 @@ public class CsvReadWriteTest {
           "Read Total Time Nanos",
           "Read CPU Time Nanos",
           "Read IO Time Nanos",
-          "Read IO Read Nanos",
           "Points",
           "TsFile Size Bytes",
-          // "TsFile Path"
         });
 
     try {
@@ -215,11 +213,9 @@ public class CsvReadWriteTest {
               encodingName.toUpperCase(),
               String.valueOf(benchmarkResult.getTotalTimeNanos()),
               String.valueOf(benchmarkResult.getCpuTimeNanos()),
-              String.valueOf(benchmarkResult.getIoTimeNanos()),
               String.valueOf(benchmarkResult.getIoReadNanos()),
               String.valueOf(benchmarkResult.getPointCount()),
               String.valueOf(benchmarkResult.getTsFileSizeBytes()),
-              // tsFile.toPath().toString()
             });
       }
     } finally {
@@ -231,31 +227,28 @@ public class CsvReadWriteTest {
       File tsFile, TSEncoding encoding, File datasetFile, long multiplier)
       throws IOException, WriteProcessException {
     long totalTimeNanos = 0;
+    long totalDatasetReadTimeNanos = 0;
     long totalCpuTimeNanos = 0;
-    long totalIoWriteNanos = 0;
-    long totalIoFlushNanos = 0;
-    long totalIoForceNanos = 0;
+    long totalIoTimeNanos = 0;
 
     for (int repeat = 0; repeat < REPEAT_TIMES; repeat++) {
-      // System.out.printf(
-      //     "    Write repeat %d/%d, file=%s, encoding=%s%n",
-      //     repeat + 1, REPEAT_TIMES, datasetFile.getName(), encoding.name());
       Files.deleteIfExists(tsFile.toPath());
-      WriteBenchmarkResult singleRunResult = writeTsFile(tsFile, encoding, datasetFile, multiplier);
+      WriteBenchmarkResult singleRunResult =
+          writeEncodedBinaryFile(tsFile, encoding, datasetFile, multiplier);
       totalTimeNanos += singleRunResult.getTotalTimeNanos();
+      totalDatasetReadTimeNanos += singleRunResult.getDatasetReadTimeNanos();
       totalCpuTimeNanos += singleRunResult.getCpuTimeNanos();
-      totalIoWriteNanos += singleRunResult.getIoWriteNanos();
-      totalIoFlushNanos += singleRunResult.getIoFlushNanos();
-      totalIoForceNanos += singleRunResult.getIoForceNanos();
+      totalIoTimeNanos += singleRunResult.getIoTimeNanos();
     }
 
     long tsFileSizeBytes = Files.size(tsFile.toPath());
     return new WriteBenchmarkResult(
         totalTimeNanos / REPEAT_TIMES,
+        totalDatasetReadTimeNanos / REPEAT_TIMES,
         totalCpuTimeNanos / REPEAT_TIMES,
-        totalIoWriteNanos / REPEAT_TIMES,
-        totalIoFlushNanos / REPEAT_TIMES,
-        totalIoForceNanos / REPEAT_TIMES,
+        totalIoTimeNanos / REPEAT_TIMES,
+        0,
+        0,
         tsFileSizeBytes);
   }
 
@@ -266,7 +259,6 @@ public class CsvReadWriteTest {
     long pointCount = -1;
 
     for (int repeat = 0; repeat < REPEAT_TIMES; repeat++) {
-      System.out.printf("    Read repeat %d/%d, file=%s%n", repeat + 1, REPEAT_TIMES, tsFile.getName());
       ReadBenchmarkResult singleRunResult = readTsFile(tsFile);
       totalTimeNanos += singleRunResult.getTotalTimeNanos();
       totalCpuTimeNanos += singleRunResult.getCpuTimeNanos();
@@ -286,7 +278,8 @@ public class CsvReadWriteTest {
       File tsFile, TSEncoding encoding, File datasetFile, long multiplier)
       throws IOException, WriteProcessException {
     ProfilingTsFileOutput profilingOutput = new ProfilingTsFileOutput(tsFile);
-    long writeTimeNanos = 0;
+    long encodeAndWriteTimeNanos = 0;
+    long datasetReadTimeNanos = 0;
 
     try (TsFileWriter tsFileWriter = new TsFileWriter(profilingOutput, new Schema())) {
       tsFileWriter.registerTimeseries(
@@ -297,7 +290,9 @@ public class CsvReadWriteTest {
         long timestamp = 1L;
         try {
           while (true) {
+            long readStartNanos = System.nanoTime();
             boolean hasRecord = loader.readRecord();
+            datasetReadTimeNanos += System.nanoTime() - readStartNanos;
             if (!hasRecord) {
               break;
             }
@@ -311,7 +306,7 @@ public class CsvReadWriteTest {
             TSRecord record = new TSRecord(deviceID, timestamp++);
             record.addTuple(new IntDataPoint(MEASUREMENT_NAME, scaleValue(value, multiplier)));
             tsFileWriter.writeRecord(record);
-            writeTimeNanos += System.nanoTime() - writeStartNanos;
+            encodeAndWriteTimeNanos += System.nanoTime() - writeStartNanos;
           }
         } finally {
           loader.close();
@@ -319,15 +314,72 @@ public class CsvReadWriteTest {
       }
     }
 
-    long totalTimeNanos = writeTimeNanos;
-    long cpuTimeNanos = Math.max(0L, totalTimeNanos - profilingOutput.getIoTimeNanos());
+    long cpuTimeNanos = Math.max(0L, encodeAndWriteTimeNanos - profilingOutput.getIoWriteNanos());
+    long totalTimeNanos = datasetReadTimeNanos + cpuTimeNanos + profilingOutput.getIoTimeNanos();
     return new WriteBenchmarkResult(
         totalTimeNanos,
+        datasetReadTimeNanos,
         cpuTimeNanos,
         profilingOutput.getIoWriteNanos(),
         profilingOutput.getIoFlushNanos(),
         profilingOutput.getIoForceNanos(),
         Files.size(tsFile.toPath()));
+  }
+
+  private WriteBenchmarkResult writeEncodedBinaryFile(
+      File outputFile, TSEncoding encoding, File datasetFile, long multiplier) throws IOException {
+    Encoder encoder = TSEncodingBuilder.getEncodingBuilder(encoding).getEncoder(TSDataType.INT64);
+    long encodeTimeNanos = 0;
+    long datasetReadTimeNanos = 0;
+    long startNanos = System.nanoTime();
+
+    try (ByteArrayOutputStream encodedStream = new ByteArrayOutputStream()) {
+      try (InputStream inputStream = Files.newInputStream(datasetFile.toPath())) {
+        CsvReader loader = new CsvReader(inputStream, StandardCharsets.UTF_8);
+        try {
+          while (true) {
+            long readStartNanos = System.nanoTime();
+            boolean hasRecord = loader.readRecord();
+            datasetReadTimeNanos += System.nanoTime() - readStartNanos;
+            if (!hasRecord) {
+              break;
+            }
+
+            String value = getFirstColumnValue(loader);
+            if (value == null) {
+              continue;
+            }
+
+            long encodeStartNanos = System.nanoTime();
+            encoder.encode((long) scaleValue(value, multiplier), encodedStream);
+            encodeTimeNanos += System.nanoTime() - encodeStartNanos;
+          }
+
+          long flushStartNanos = System.nanoTime();
+          encoder.flush(encodedStream);
+          encodeTimeNanos += System.nanoTime() - flushStartNanos;
+        } finally {
+          loader.close();
+        }
+      }
+
+      byte[] encodedBytes = encodedStream.toByteArray();
+      long ioStartNanos = System.nanoTime();
+      try (FileOutputStream outputStream = new FileOutputStream(outputFile)) {
+        outputStream.write(encodedBytes);
+        outputStream.flush();
+      }
+      long ioTimeNanos = System.nanoTime() - ioStartNanos;
+      long totalTimeNanos = System.nanoTime() - startNanos;
+      return new WriteBenchmarkResult(
+          totalTimeNanos,
+          datasetReadTimeNanos,
+          encodeTimeNanos,
+          ioTimeNanos,
+          0,
+          0,
+          Files.size(outputFile.toPath()));
+    }
   }
 
   private ReadBenchmarkResult readTsFile(File tsFile) throws IOException {
@@ -425,6 +477,7 @@ public class CsvReadWriteTest {
 
   private static final class WriteBenchmarkResult {
     private final long totalTimeNanos;
+    private final long datasetReadTimeNanos;
     private final long cpuTimeNanos;
     private final long ioWriteNanos;
     private final long ioFlushNanos;
@@ -433,12 +486,14 @@ public class CsvReadWriteTest {
 
     private WriteBenchmarkResult(
         long totalTimeNanos,
+        long datasetReadTimeNanos,
         long cpuTimeNanos,
         long ioWriteNanos,
         long ioFlushNanos,
         long ioForceNanos,
         long tsFileSizeBytes) {
       this.totalTimeNanos = totalTimeNanos;
+      this.datasetReadTimeNanos = datasetReadTimeNanos;
       this.cpuTimeNanos = cpuTimeNanos;
       this.ioWriteNanos = ioWriteNanos;
       this.ioFlushNanos = ioFlushNanos;
@@ -448,6 +503,10 @@ public class CsvReadWriteTest {
 
     private long getTotalTimeNanos() {
       return totalTimeNanos;
+    }
+
+    private long getDatasetReadTimeNanos() {
+      return datasetReadTimeNanos;
     }
 
     private long getCpuTimeNanos() {
@@ -540,26 +599,21 @@ public class CsvReadWriteTest {
 
   private static final class ProfilingTsFileOutput extends OutputStream implements TsFileOutput {
     private final FileOutputStream outputStream;
-    private final byte[] buffer = new byte[FILE_OUTPUT_BUFFER_SIZE];
+    private final OutputStream bufferedStream;
 
-    private int bufferedByteCount;
     private long position;
     private long ioWriteNanos;
     private long ioFlushNanos;
     private long ioForceNanos;
-    private boolean closed;
 
     private ProfilingTsFileOutput(File file) throws IOException {
       this.outputStream = new FileOutputStream(file);
+      this.bufferedStream = new NoSyncBufferedOutputStream(new TimedOutputStream());
     }
 
     @Override
     public void write(int b) throws IOException {
-      ensureOpen();
-      if (bufferedByteCount >= buffer.length) {
-        flushBuffer();
-      }
-      buffer[bufferedByteCount++] = (byte) b;
+      bufferedStream.write(b);
       position++;
     }
 
@@ -570,43 +624,31 @@ public class CsvReadWriteTest {
 
     @Override
     public void write(byte b) throws IOException {
-      write(b & 0xFF);
+      bufferedStream.write(b);
+      position++;
     }
 
     @Override
     public void write(byte[] b, int start, int offset) throws IOException {
-      ensureOpen();
-      if (offset >= buffer.length) {
-        flushBuffer();
-        long ioStartNanos = System.nanoTime();
-        outputStream.write(b, start, offset);
-        ioWriteNanos += System.nanoTime() - ioStartNanos;
-        position += offset;
-        return;
-      }
-
-      if (offset > buffer.length - bufferedByteCount) {
-        flushBuffer();
-      }
-      System.arraycopy(b, start, buffer, bufferedByteCount, offset);
-      bufferedByteCount += offset;
+      bufferedStream.write(b, start, offset);
       position += offset;
     }
 
     @Override
     public void write(ByteBuffer byteBuffer) throws IOException {
+      int remaining = byteBuffer.remaining();
       if (byteBuffer.hasArray()) {
-        write(
+        bufferedStream.write(
             byteBuffer.array(),
             byteBuffer.arrayOffset() + byteBuffer.position(),
-            byteBuffer.remaining());
+            remaining);
         byteBuffer.position(byteBuffer.limit());
-        return;
+      } else {
+        byte[] bytes = new byte[remaining];
+        byteBuffer.get(bytes);
+        bufferedStream.write(bytes);
       }
-
-      byte[] bytes = new byte[byteBuffer.remaining()];
-      byteBuffer.get(bytes);
-      write(bytes, 0, bytes.length);
+      position += remaining;
     }
 
     @Override
@@ -616,12 +658,8 @@ public class CsvReadWriteTest {
 
     @Override
     public void close() throws IOException {
-      if (closed) {
-        return;
-      }
-      flushBuffer();
+      bufferedStream.close();
       outputStream.close();
-      closed = true;
     }
 
     @Override
@@ -631,8 +669,7 @@ public class CsvReadWriteTest {
 
     @Override
     public void flush() throws IOException {
-      ensureOpen();
-      flushBuffer();
+      bufferedStream.flush();
       long ioStartNanos = System.nanoTime();
       outputStream.flush();
       ioFlushNanos += System.nanoTime() - ioStartNanos;
@@ -640,34 +677,49 @@ public class CsvReadWriteTest {
 
     @Override
     public void truncate(long size) throws IOException {
-      ensureOpen();
-      flushBuffer();
+      bufferedStream.flush();
       outputStream.getChannel().truncate(size);
       position = outputStream.getChannel().position();
     }
 
     @Override
     public void force() throws IOException {
-      ensureOpen();
       flush();
       long ioStartNanos = System.nanoTime();
       outputStream.getFD().sync();
       ioForceNanos += System.nanoTime() - ioStartNanos;
     }
 
-    private void flushBuffer() throws IOException {
-      if (bufferedByteCount == 0) {
-        return;
-      }
-      long ioStartNanos = System.nanoTime();
-      outputStream.write(buffer, 0, bufferedByteCount);
-      ioWriteNanos += System.nanoTime() - ioStartNanos;
-      bufferedByteCount = 0;
-    }
+    private final class TimedOutputStream extends OutputStream {
 
-    private void ensureOpen() throws IOException {
-      if (closed) {
-        throw new IOException("TsFile output has been closed.");
+      @Override
+      public void write(int b) throws IOException {
+        long ioStartNanos = System.nanoTime();
+        try {
+          outputStream.write(b);
+        } finally {
+          ioWriteNanos += System.nanoTime() - ioStartNanos;
+        }
+      }
+
+      @Override
+      public void write(byte[] b, int off, int len) throws IOException {
+        long ioStartNanos = System.nanoTime();
+        try {
+          outputStream.write(b, off, len);
+        } finally {
+          ioWriteNanos += System.nanoTime() - ioStartNanos;
+        }
+      }
+
+      @Override
+      public void flush() throws IOException {
+        outputStream.flush();
+      }
+
+      @Override
+      public void close() throws IOException {
+        outputStream.close();
       }
     }
 
