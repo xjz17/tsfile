@@ -47,7 +47,8 @@ class SubcolumnDecoder : public Decoder {
         buffer_ = 0;
     }
 
-    bool has_remaining() override {
+    bool has_remaining(const common::ByteStream &buffer) override {
+        (void)buffer;
         return current_index_ < value_count_;
     }
 

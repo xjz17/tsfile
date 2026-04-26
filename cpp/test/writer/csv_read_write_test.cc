@@ -374,7 +374,7 @@ TEST_F(CsvReadWriteTest, CompareCsvReadWriteEncodings) {
     libtsfile_init();
     // Tune page flush granularity for benchmark: smaller pages usually increase
     // flush/close stage work and raise Write IO Time share in total write time.
-    ScopedWriteIoTuning io_tuning(/*page_max_points=*/256,
+    ScopedWriteIoTuning io_tuning(/*page_max_points=*/64,
                                   /*page_max_memory_bytes=*/4 * 1024);
     ensure_dir(kOutputParentDir);
     ensure_dir(kTsFileOutputDir);
@@ -386,8 +386,10 @@ TEST_F(CsvReadWriteTest, CompareCsvReadWriteEncodings) {
         GTEST_SKIP() << "No dataset csv files found under: " << kInputParentDir;
     }
 
-    const std::array<EncodingConfig, 2> encodings = {{
+    const std::array<EncodingConfig, 4> encodings = {{
         {common::TS_2DIFF, "TS_2DIFF", "ts_2diff"},
+        {common::RLE, "RLE", "rle"},
+        {common::GORILLA, "GORILLA", "gorilla"},
         {common::SUBCOLUMN, "SUBCOLUMN", "subcolumn"},
     }};
 
