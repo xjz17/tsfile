@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "common/schema.h"
+#include "common/global.h"
 #include "common/tsfile_common.h"
 #include "reader/qds_without_timegenerator.h"
 #include "reader/tsfile_reader.h"
@@ -39,6 +40,27 @@
 
 namespace storage {
 namespace fs = std::filesystem;
+
+class ScopedWriteIoTuning {
+   public:
+    ScopedWriteIoTuning(uint32_t page_max_points, uint32_t page_max_memory_bytes)
+        : old_page_max_points_(common::g_config_value_.page_writer_max_point_num_),
+          old_page_max_memory_bytes_(
+              common::g_config_value_.page_writer_max_memory_bytes_) {
+        set_page_max_point_count(page_max_points);
+        common::g_config_value_.page_writer_max_memory_bytes_ = page_max_memory_bytes;
+    }
+
+    ~ScopedWriteIoTuning() {
+        set_page_max_point_count(old_page_max_points_);
+        common::g_config_value_.page_writer_max_memory_bytes_ =
+            old_page_max_memory_bytes_;
+    }
+
+   private:
+    uint32_t old_page_max_points_;
+    uint32_t old_page_max_memory_bytes_;
+};
 
 class CsvReadWriteTest : public ::testing::Test {
    protected:
@@ -350,6 +372,10 @@ const std::string CsvReadWriteTest::kMeasurementName = "sensor_1";
 
 TEST_F(CsvReadWriteTest, CompareCsvReadWriteEncodings) {
     libtsfile_init();
+    // Tune page flush granularity for benchmark: smaller pages usually increase
+    // flush/close stage work and raise Write IO Time share in total write time.
+    ScopedWriteIoTuning io_tuning(/*page_max_points=*/256,
+                                  /*page_max_memory_bytes=*/4 * 1024);
     ensure_dir(kOutputParentDir);
     ensure_dir(kTsFileOutputDir);
     if (!dir_exists(kInputParentDir)) {
