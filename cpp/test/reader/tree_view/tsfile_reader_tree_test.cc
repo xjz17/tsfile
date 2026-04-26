@@ -24,109 +24,20 @@
 #include "common/schema.h"
 #include "common/tablet.h"
 #include "file/write_file.h"
+#include "reader/result_set.h"
 #include "reader/tsfile_reader.h"
 #include "reader/tsfile_tree_reader.h"
 #include "writer/tsfile_table_writer.h"
 #include "writer/tsfile_tree_writer.h"
 
-namespace storage {
-class QDSWithoutTimeGenerator;
-}
-
 using namespace storage;
 using namespace common;
-
-static void print_table_result_set(storage::TableResultSet* table_result_set) {
-    if (table_result_set == nullptr) {
-        std::cout << "TableResultSet is nullptr" << std::endl;
-        return;
-    }
-
-    auto metadata = table_result_set->get_metadata();
-    if (metadata == nullptr) {
-        std::cout << "Metadata is nullptr" << std::endl;
-        return;
-    }
-
-    uint32_t column_count = metadata->get_column_count();
-    if (column_count == 0) {
-        std::cout << "No columns in result set" << std::endl;
-        return;
-    }
-
-    for (uint32_t i = 1; i <= column_count; i++) {
-        std::cout << metadata->get_column_name(i);
-        if (i < column_count) {
-            std::cout << "\t";
-        }
-    }
-    std::cout << std::endl;
-
-    bool has_next = false;
-    int row_count = 0;
-    while (IS_SUCC(table_result_set->next(has_next)) && has_next) {
-        for (uint32_t i = 1; i <= column_count; i++) {
-            if (table_result_set->is_null(i)) {
-                std::cout << "NULL";
-            } else {
-                common::TSDataType col_type = metadata->get_column_type(i);
-                switch (col_type) {
-                    case common::INT64: {
-                        int64_t val = table_result_set->get_value<int64_t>(i);
-                        std::cout << val;
-                        break;
-                    }
-                    case common::INT32: {
-                        int32_t val = table_result_set->get_value<int32_t>(i);
-                        std::cout << val;
-                        break;
-                    }
-                    case common::FLOAT: {
-                        float val = table_result_set->get_value<float>(i);
-                        std::cout << val;
-                        break;
-                    }
-                    case common::DOUBLE: {
-                        double val = table_result_set->get_value<double>(i);
-                        std::cout << val;
-                        break;
-                    }
-                    case common::BOOLEAN: {
-                        bool val = table_result_set->get_value<bool>(i);
-                        std::cout << (val ? "true" : "false");
-                        break;
-                    }
-                    case common::STRING: {
-                        common::String* str =
-                            table_result_set->get_value<common::String*>(i);
-                        if (str == nullptr) {
-                            std::cout << "null";
-                        } else {
-                            std::cout << std::string(str->buf_, str->len_);
-                        }
-                        break;
-                    }
-                    default: {
-                        std::cout << "<UNKNOWN>";
-                        break;
-                    }
-                }
-            }
-            if (i < column_count) {
-                std::cout << "\t";
-            }
-        }
-        std::cout << std::endl;
-        row_count++;
-    }
-    std::cout << "Total rows: " << row_count << std::endl;
-}
 
 class TsFileTreeReaderTest : public ::testing::Test {
    protected:
     void SetUp() override {
         libtsfile_init();
-        file_name_ = std::string("tsfile_writer_tree_test_") +
+        file_name_ = std::string("tsfile_writer_tree_reader_test_") +
                      generate_random_string(10) + std::string(".tsfile");
         remove(file_name_.c_str());
         int flags = O_WRONLY | O_CREAT | O_TRUNC;
@@ -137,7 +48,7 @@ class TsFileTreeReaderTest : public ::testing::Test {
         write_file_.create(file_name_, flags, mode);
     }
 
-    void TearDown() override {}
+    void TearDown() override { libtsfile_destroy(); }
     std::string file_name_;
     WriteFile write_file_;
 
@@ -397,9 +308,12 @@ TEST_F(TsFileTreeReaderTest, ExtendedRowsAndColumnsTest) {
     }
 
     const int NUM_ROWS = 100;
+    int start_time = 0, end_time = -1;
     for (int row = 0; row < NUM_ROWS; ++row) {
         for (const auto& device_id : device_ids) {
-            TsRecord record(device_id, row * 1000);
+            int timestamp = row * 1000;
+            TsRecord record(device_id, timestamp);
+            end_time = timestamp;
             for (size_t i = 0; i < measurement_ids.size(); ++i) {
                 switch (data_types[i]) {
                     case INT64:
@@ -432,6 +346,18 @@ TEST_F(TsFileTreeReaderTest, ExtendedRowsAndColumnsTest) {
     TsFileTreeReader reader;
     reader.open(file_name_);
 
+    auto device_timeseries_map = reader.get_timeseries_metadata();
+    ASSERT_EQ(device_timeseries_map.size(), device_ids.size());
+    auto device_timeseries = device_timeseries_map.at(
+        std::make_shared<StringArrayDeviceID>(device_ids[0]));
+    ASSERT_EQ(device_timeseries.size(), measurement_ids.size());
+    ASSERT_EQ(
+        device_timeseries[0]->get_measurement_name().to_std_string(),
+        *std::min_element(measurement_ids.begin(), measurement_ids.end()));
+    ASSERT_EQ(device_timeseries[0]->get_statistic()->start_time_, start_time);
+    ASSERT_EQ(device_timeseries[0]->get_statistic()->end_time_, end_time);
+    ASSERT_EQ(device_timeseries[0]->get_statistic()->count_, NUM_ROWS);
+    // Verify get_all_device_ids / get_all_devices
     auto read_device_ids = reader.get_all_device_ids();
     ASSERT_EQ(read_device_ids.size(), device_ids.size());
     for (size_t i = 0; i < device_ids.size(); ++i) {
@@ -499,4 +425,87 @@ TEST_F(TsFileTreeReaderTest, ExtendedRowsAndColumnsTest) {
     for (auto* measurement : measurements) {
         delete measurement;
     }
+}
+
+// Regression test: query_table_on_tree on a device path with three or more
+// dot-segments (e.g. "root.sensors.TH") previously SEGVed because:
+// 1. StringArrayDeviceID split "root.sensors.TH" into ["root","sensors","TH"]
+//    instead of the correct ["root.sensors","TH"], so get_table_name() returned
+//    "root" instead of "root.sensors".
+// 2. load_device_index_entry used operator[] on the table map which inserted a
+//    null entry, then asserted on it.
+TEST_F(TsFileTreeReaderTest, QueryTableOnTreeDeepDevicePath) {
+    TsFileTreeWriter writer(&write_file_);
+    // Device paths with 3 dot-segments: table_name="root.sensors", device="TH"
+    std::string device_id = "root.sensors.TH";
+    std::string m_temp = "temperature";
+    std::string m_humi = "humidity";
+    auto* ms_temp = new MeasurementSchema(m_temp, INT32);
+    auto* ms_humi = new MeasurementSchema(m_humi, INT32);
+    ASSERT_EQ(E_OK, writer.register_timeseries(device_id, ms_temp));
+    ASSERT_EQ(E_OK, writer.register_timeseries(device_id, ms_humi));
+    delete ms_temp;
+    delete ms_humi;
+
+    for (int ts = 0; ts < 5; ts++) {
+        TsRecord rec(device_id, ts);
+        rec.add_point(m_temp, static_cast<int32_t>(20 + ts));
+        rec.add_point(m_humi, static_cast<int32_t>(50 + ts));
+        ASSERT_EQ(E_OK, writer.write(rec));
+    }
+    writer.flush();
+    writer.close();
+
+    TsFileReader reader;
+    ASSERT_EQ(E_OK, reader.open(file_name_));
+    ResultSet* result;
+    // query_table_on_tree used to SEGV here due to wrong table-name lookup
+    ASSERT_EQ(E_OK, reader.query_table_on_tree({m_temp, m_humi}, INT64_MIN,
+                                               INT64_MAX, result));
+
+    auto* trs = static_cast<storage::TableResultSet*>(result);
+    bool has_next = false;
+    int row_cnt = 0;
+    while (IS_SUCC(trs->next(has_next)) && has_next) {
+        row_cnt++;
+    }
+    EXPECT_EQ(row_cnt, 5);
+    reader.destroy_query_data_set(result);
+    reader.close();
+}
+
+// Regression test: load_device_index_entry previously used operator[] to look
+// up the table node, which silently inserted a null entry and then asserted.
+// After the fix it uses find() and returns E_DEVICE_NOT_EXIST gracefully.
+// This is triggered when querying a measurement that no device in the file has.
+TEST_F(TsFileTreeReaderTest, QueryTableOnTreeMissingMeasurement) {
+    // Use the same multi-device setup as ReadTreeByTable to ensure a valid
+    // file.
+    TsFileTreeWriter writer(&write_file_);
+    std::vector<std::string> device_ids = {"root.db1.t1", "root.db2.t1"};
+    std::string m_temp = "temperature";
+    for (auto dev : device_ids) {
+        auto* ms = new MeasurementSchema(m_temp, INT32);
+        ASSERT_EQ(E_OK, writer.register_timeseries(dev, ms));
+        delete ms;
+        TsRecord rec(dev, 0);
+        rec.add_point(m_temp, static_cast<int32_t>(25));
+        ASSERT_EQ(E_OK, writer.write(rec));
+    }
+    writer.flush();
+    writer.close();
+
+    TsFileReader reader;
+    ASSERT_EQ(E_OK, reader.open(file_name_));
+    ResultSet* result = nullptr;
+    // "nonexistent" is not present in any device. Before the fix,
+    // load_device_index_entry used operator[] which inserted null and crashed.
+    // After the fix it returns E_DEVICE_NOT_EXIST or E_COLUMN_NOT_EXIST.
+    int ret = reader.query_table_on_tree({"nonexistent"}, INT64_MIN, INT64_MAX,
+                                         result);
+    EXPECT_NE(ret, E_OK);  // Must not succeed (measurement not found)
+    if (result != nullptr) {
+        reader.destroy_query_data_set(result);
+    }
+    reader.close();
 }
