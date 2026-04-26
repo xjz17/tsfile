@@ -23,6 +23,7 @@
 #include "decoder.h"
 #include "gorilla_decoder.h"
 #include "plain_decoder.h"
+#include "subcolumn_decoder.h"
 #include "ts2diff_decoder.h"
 
 namespace storage {
@@ -79,6 +80,18 @@ class DecoderFactory {
                 ALLOC_AND_RETURN_DECODER(FloatTS2DIFFDecoder);
             } else if (data_type == common::DOUBLE) {
                 ALLOC_AND_RETURN_DECODER(DoubleTS2DIFFDecoder);
+            } else {
+                ASSERT(false);
+            }
+        } else if (encoding == common::SUBCOLUMN) {
+            if (data_type == common::INT32) {
+                ALLOC_AND_RETURN_DECODER(IntSubcolumnDecoder);
+            } else if (data_type == common::INT64) {
+                ALLOC_AND_RETURN_DECODER(LongSubcolumnDecoder);
+            } else if (data_type == common::FLOAT) {
+                ALLOC_AND_RETURN_DECODER(FloatSubcolumnDecoder);
+            } else if (data_type == common::DOUBLE) {
+                ALLOC_AND_RETURN_DECODER(DoubleSubcolumnDecoder);
             } else {
                 ASSERT(false);
             }

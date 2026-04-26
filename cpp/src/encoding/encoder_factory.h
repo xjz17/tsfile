@@ -24,6 +24,7 @@
 #include "encoder.h"
 #include "gorilla_encoder.h"
 #include "plain_encoder.h"
+#include "subcolumn_encoder.h"
 #include "ts2diff_encoder.h"
 
 namespace storage {
@@ -111,6 +112,18 @@ class EncoderFactory {
             return nullptr;
         } else if (encoding == common::FREQ) {
             return nullptr;
+        } else if (encoding == common::SUBCOLUMN) {
+            if (data_type == common::INT32) {
+                ALLOC_AND_RETURN_ENCODER(IntSubcolumnEncoder);
+            } else if (data_type == common::INT64) {
+                ALLOC_AND_RETURN_ENCODER(LongSubcolumnEncoder);
+            } else if (data_type == common::FLOAT) {
+                ALLOC_AND_RETURN_ENCODER(FloatSubcolumnEncoder);
+            } else if (data_type == common::DOUBLE) {
+                ALLOC_AND_RETURN_ENCODER(DoubleSubcolumnEncoder);
+            } else {
+                ASSERT(false);
+            }
         } else {
             // not support now
             ASSERT(false);

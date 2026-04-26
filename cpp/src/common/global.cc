@@ -90,9 +90,21 @@ void set_config_value() {}
 const char* s_data_type_names[8] = {"BOOLEAN", "INT32", "INT64", "FLOAT",
                                     "DOUBLE",  "TEXT",  "VECTOR", "STRING"};
 
-const char* s_encoding_names[12] = {
-    "PLAIN",      "DICTIONARY", "RLE",     "DIFF",   "TS_2DIFF", "BITMAP",
-    "GORILLA_V1", "REGULAR",    "GORILLA", "ZIGZAG", "FREQ"};
+const char* s_encoding_names[15] = {"PLAIN",
+                                    "DICTIONARY",
+                                    "RLE",
+                                    "DIFF",
+                                    "TS_2DIFF",
+                                    "BITMAP",
+                                    "GORILLA_V1",
+                                    "REGULAR",
+                                    "GORILLA",
+                                    "ZIGZAG",
+                                    "FREQ",
+                                    "",
+                                    "",
+                                    "",
+                                    "SUBCOLUMN"};
 
 const char* s_compression_names[8] = {
     "UNCOMPRESSED", "SNAPPY", "GZIP", "LZO", "SDT", "PAA", "PLA", "LZ4",
