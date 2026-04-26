@@ -26,6 +26,9 @@ import org.apache.tsfile.read.filter.factory.FilterFactory;
 import org.apache.tsfile.read.filter.factory.TimeFilterApi;
 import org.apache.tsfile.read.filter.factory.ValueFilterApi;
 import org.apache.tsfile.read.filter.operator.And;
+import org.apache.tsfile.read.filter.operator.ExtractTimeFilterOperators;
+import org.apache.tsfile.read.filter.operator.ExtractValueFilterOperators;
+import org.apache.tsfile.read.filter.operator.FalseLiteralFilter;
 import org.apache.tsfile.read.filter.operator.GroupByFilter;
 import org.apache.tsfile.read.filter.operator.GroupByMonthFilter;
 import org.apache.tsfile.read.filter.operator.Not;
@@ -40,6 +43,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.function.LongConsumer;
 
 /**
  * A Filter is an executable expression tree describing the criteria for which records to keep when
@@ -77,6 +81,8 @@ public abstract class Filter {
 
   public abstract boolean satisfyBinary(long time, Binary value);
 
+  public abstract boolean satisfyString(long time, String value);
+
   /**
    * To examine whether the row(with time and values) is satisfied with the filter.
    *
@@ -111,6 +117,26 @@ public abstract class Filter {
    * @return for each row, true if the row is satisfied with the filter, false otherwise
    */
   public abstract boolean[] satisfyTsBlock(boolean[] selection, TsBlock tsBlock);
+
+  public final boolean[] satisfyTsBlock(
+      boolean[] selection, TsBlock tsBlock, LongConsumer filterRowsRecorder) {
+
+    int inputCount = countSelectedRows(selection);
+    boolean[] result = satisfyTsBlock(selection, tsBlock);
+    int outputCount = countSelectedRows(result);
+    if (inputCount > outputCount) {
+      filterRowsRecorder.accept((inputCount - outputCount));
+    }
+
+    return result;
+  }
+
+  private static int countSelectedRows(boolean[] selection) {
+    if (selection == null) return 0;
+    int count = 0;
+    for (boolean b : selection) count += b ? 1 : 0;
+    return count;
+  }
 
   /**
    * To examine whether the block can be skipped.
@@ -245,6 +271,32 @@ public abstract class Filter {
         return new Or(buffer);
       case NOT:
         return new Not(buffer);
+      case FALSE_LITERAL:
+        return new FalseLiteralFilter();
+      case EXTRACT_TIME_EQ:
+        return new ExtractTimeFilterOperators.ExtractTimeEq(buffer);
+      case EXTRACT_TIME_NEQ:
+        return new ExtractTimeFilterOperators.ExtractTimeNotEq(buffer);
+      case EXTRACT_TIME_GT:
+        return new ExtractTimeFilterOperators.ExtractTimeGt(buffer);
+      case EXTRACT_TIME_GTEQ:
+        return new ExtractTimeFilterOperators.ExtractTimeGtEq(buffer);
+      case EXTRACT_TIME_LT:
+        return new ExtractTimeFilterOperators.ExtractTimeLt(buffer);
+      case EXTRACT_TIME_LTEQ:
+        return new ExtractTimeFilterOperators.ExtractTimeLtEq(buffer);
+      case EXTRACT_VALUE_EQ:
+        return new ExtractValueFilterOperators.ExtractValueEq(buffer);
+      case EXTRACT_VALUE_NEQ:
+        return new ExtractValueFilterOperators.ExtractValueNotEq(buffer);
+      case EXTRACT_VALUE_GT:
+        return new ExtractValueFilterOperators.ExtractValueGt(buffer);
+      case EXTRACT_VALUE_GTEQ:
+        return new ExtractValueFilterOperators.ExtractValueGtEq(buffer);
+      case EXTRACT_VALUE_LT:
+        return new ExtractValueFilterOperators.ExtractValueLt(buffer);
+      case EXTRACT_VALUE_LTEQ:
+        return new ExtractValueFilterOperators.ExtractValueLtEq(buffer);
       default:
         throw new UnsupportedOperationException("Unsupported operator type:" + type);
     }

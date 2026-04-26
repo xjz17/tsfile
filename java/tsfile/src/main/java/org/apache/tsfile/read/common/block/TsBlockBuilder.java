@@ -49,9 +49,6 @@ public class TsBlockBuilder {
   // This could be any other small number.
   private static final int DEFAULT_INITIAL_EXPECTED_ENTRIES = 8;
 
-  private static final int DEFAULT_MAX_TSBLOCK_SIZE_IN_BYTES =
-      TSFileDescriptor.getInstance().getConfig().getMaxTsBlockSizeInBytes();
-
   private TimeColumnBuilder timeColumnBuilder;
   private ColumnBuilder[] valueColumnBuilders;
   private List<TSDataType> types;
@@ -77,7 +74,10 @@ public class TsBlockBuilder {
   }
 
   public TsBlockBuilder(int initialExpectedEntries, List<TSDataType> types) {
-    this(initialExpectedEntries, DEFAULT_MAX_TSBLOCK_SIZE_IN_BYTES, types);
+    this(
+        initialExpectedEntries,
+        TSFileDescriptor.getInstance().getConfig().getMaxTsBlockSizeInBytes(),
+        types);
   }
 
   public static TsBlockBuilder createWithOnlyTimeColumn() {
@@ -111,10 +111,18 @@ public class TsBlockBuilder {
                   tsBlockBuilderStatus.createColumnBuilderStatus(), initialExpectedEntries);
           break;
         case INT32:
+          valueColumnBuilders[i] =
+              new IntColumnBuilder(
+                  tsBlockBuilderStatus.createColumnBuilderStatus(),
+                  initialExpectedEntries,
+                  TSDataType.INT32);
+          break;
         case DATE:
           valueColumnBuilders[i] =
               new IntColumnBuilder(
-                  tsBlockBuilderStatus.createColumnBuilderStatus(), initialExpectedEntries);
+                  tsBlockBuilderStatus.createColumnBuilderStatus(),
+                  initialExpectedEntries,
+                  TSDataType.DATE);
           break;
         case INT64:
         case TIMESTAMP:
@@ -135,6 +143,7 @@ public class TsBlockBuilder {
         case TEXT:
         case BLOB:
         case STRING:
+        case OBJECT:
           valueColumnBuilders[i] =
               new BinaryColumnBuilder(
                   tsBlockBuilderStatus.createColumnBuilderStatus(), initialExpectedEntries);
@@ -181,10 +190,18 @@ public class TsBlockBuilder {
                   tsBlockBuilderStatus.createColumnBuilderStatus(), initialExpectedEntries);
           break;
         case INT32:
+          valueColumnBuilders[i] =
+              new IntColumnBuilder(
+                  tsBlockBuilderStatus.createColumnBuilderStatus(),
+                  initialExpectedEntries,
+                  TSDataType.INT32);
+          break;
         case DATE:
           valueColumnBuilders[i] =
               new IntColumnBuilder(
-                  tsBlockBuilderStatus.createColumnBuilderStatus(), initialExpectedEntries);
+                  tsBlockBuilderStatus.createColumnBuilderStatus(),
+                  initialExpectedEntries,
+                  TSDataType.DATE);
           break;
         case INT64:
         case TIMESTAMP:
@@ -205,6 +222,7 @@ public class TsBlockBuilder {
         case TEXT:
         case BLOB:
         case STRING:
+        case OBJECT:
           valueColumnBuilders[i] =
               new BinaryColumnBuilder(
                   tsBlockBuilderStatus.createColumnBuilderStatus(), initialExpectedEntries);

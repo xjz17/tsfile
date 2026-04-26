@@ -30,10 +30,10 @@
 namespace storage {
 
 template <typename T>
-class ZigzagDecoder {
+class ZigzagDecoder : public Decoder {
    public:
     ZigzagDecoder() { init(); }
-    ~ZigzagDecoder() { destroy(); }
+    ~ZigzagDecoder() override { destroy(); }
 
     void init() {
         type_ = common::ZIGZAG;
@@ -46,12 +46,48 @@ class ZigzagDecoder {
         zigzag_decode_arr_ = nullptr;
     }
 
-    void reset() {
+    bool has_remaining(const common::ByteStream& buffer) override {
+        return buffer.has_remaining() || !list_transit_in_zd_.empty();
+    }
+    int read_boolean(bool& ret_value, common::ByteStream& in) override {
+        return common::E_TYPE_NOT_MATCH;
+    }
+    inline int read_int32(int32_t& ret_value, common::ByteStream& in) override {
+        ret_value = decode(in);
+        return common::E_OK;
+    }
+    inline int read_int64(int64_t& ret_value, common::ByteStream& in) override {
+        ret_value = decode(in);
+        return common::E_OK;
+    }
+    int read_float(float& ret_value, common::ByteStream& in) override {
+        return common::E_TYPE_NOT_MATCH;
+    }
+    int read_double(double& ret_value, common::ByteStream& in) override {
+        return common::E_TYPE_NOT_MATCH;
+    }
+    int read_String(common::String& ret_value, common::PageArena& pa,
+                    common::ByteStream& in) override {
+        return common::E_TYPE_NOT_MATCH;
+    }
+
+    void each_encode_reset() {
         bits_left_ = 0;
         buffer_ = 0;
         stored_value_ = 0;
         first_bit_of_byte_ = 0;
         num_of_sorts_of_zigzag_ = 0;
+    }
+
+    void reset() override {
+        type_ = common::ZIGZAG;
+        bits_left_ = 0;
+        buffer_ = 0;
+        stored_value_ = 0;
+        first_bit_of_byte_ = 0;
+        num_of_sorts_of_zigzag_ = 0;
+        first_read_ = true;
+        destroy();
     }
 
     void destroy() {
@@ -61,12 +97,12 @@ class ZigzagDecoder {
         }
     }
 
-    void read_header(common::ByteStream &in) {
+    void read_header(common::ByteStream& in) {
         common::SerializationUtil::read_var_uint(zigzag_length_, in);
         common::SerializationUtil::read_var_uint(int_length_, in);
     }
 
-    void flush_byte_if_empty(common::ByteStream &in) {
+    void flush_byte_if_empty(common::ByteStream& in) {
         if (bits_left_ == 0) {
             uint32_t read_len = 0;
             in.read_buf(&buffer_, 1, read_len);
@@ -111,11 +147,11 @@ class ZigzagDecoder {
         return stored_value_;
     }
 
-    T decode(common::ByteStream &in);
+    inline T decode(common::ByteStream& in);
 
    public:
     common::TSEncoding type_;
-    uint8_t *zigzag_decode_arr_;
+    uint8_t* zigzag_decode_arr_;
     uint64_t stored_value_;
     int bits_left_;
     uint8_t buffer_;
@@ -128,11 +164,11 @@ class ZigzagDecoder {
 };
 
 template <>
-int32_t ZigzagDecoder<int32_t>::decode(common::ByteStream &in) {
+inline int32_t ZigzagDecoder<int32_t>::decode(common::ByteStream& in) {
     if (UNLIKELY(first_read_ == true)) {
         read_header(in);
         zigzag_decode_arr_ =
-            (uint8_t *)common::mem_alloc(10, common::MOD_ZIGZAG_OBJ);
+            (uint8_t*)common::mem_alloc(10, common::MOD_ZIGZAG_OBJ);
         buffer_ = 0;
         first_read_ = false;
         list_transit_in_zd_.clear();
@@ -156,16 +192,16 @@ int32_t ZigzagDecoder<int32_t>::decode(common::ByteStream &in) {
 
     int32_t ret_value = (int32_t)(stored_value_);
     ret_value = (int32_t)(zigzag_decoder(stored_value_));
-    reset();
+    each_encode_reset();
     return ret_value;
 }
 
 template <>
-int64_t ZigzagDecoder<int64_t>::decode(common::ByteStream &in) {
+inline int64_t ZigzagDecoder<int64_t>::decode(common::ByteStream& in) {
     if (UNLIKELY(first_read_ == true)) {
         read_header(in);
         zigzag_decode_arr_ =
-            (uint8_t *)common::mem_alloc(10, common::MOD_ZIGZAG_OBJ);
+            (uint8_t*)common::mem_alloc(10, common::MOD_ZIGZAG_OBJ);
         buffer_ = 0;
         first_read_ = false;
         list_transit_in_zd_.clear();
@@ -189,7 +225,7 @@ int64_t ZigzagDecoder<int64_t>::decode(common::ByteStream &in) {
 
     int64_t ret_value = (int64_t)(stored_value_);
     ret_value = (int64_t)(zigzag_decoder(stored_value_));
-    reset();
+    each_encode_reset();
     return ret_value;
 }
 

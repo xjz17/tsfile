@@ -43,7 +43,7 @@ class Mutex {
     void unlock() {
         int ret = pthread_mutex_unlock(&mutex_);
         ASSERT(ret == 0);
-        (void) ret;
+        (void)ret;
     }
 
     bool try_lock() {
@@ -64,11 +64,11 @@ class Mutex {
 
 class MutexGuard {
    public:
-    MutexGuard(Mutex &m) : m_(m) { m_.lock(); }
+    MutexGuard(Mutex& m) : m_(m) { m_.lock(); }
     ~MutexGuard() { m_.unlock(); }
 
    private:
-    Mutex &m_;
+    Mutex& m_;
 };
 
 }  // end namespace common

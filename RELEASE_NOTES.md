@@ -18,6 +18,94 @@
     under the License.
 
 -->
+# Apache TsFile 2.2.1
+
+## New Feature
+
+- [Java] Support modifying schema during the write process.
+- [Java] Support memory usage estimation for Tablet and related classes.
+- [Java] Support I/O size recording during file reading.
+- [Java] Support encryption configuration for read and write operations.
+- [Python] Support converting DataFrame to TsFile.
+- [Python] Support DATE, TIMESTAMP and other new data types.
+
+## Improvement
+
+- [Java] Optimize memory usage calculation for aligned data.
+- [Java] Support JDK-25.
+- [C++] Upgrade zlib to latest version.
+
+## Bugfix
+
+- [Java] Fixed incorrect query results when reading DATE type in table model.
+- [Java] Fixed data corruption when rewriting chunks with time deletion.
+- [Java] Fixed chunk metadata loss when deserializing from temporary files.
+- [C++] Fixed inability to read files exceeding 2GB.
+- [C++] Fixed aligned chunk reader producing wrong output.
+- [Python] Fixed DataFrame validation and column name handling issues.
+
+# Apache TsFile 2.2.0
+
+## New Feature
+
+- TsFile-Python fully supports TEXT and STRING data types.
+- The Python interface supports the to_dataframe method.
+- C++ TsFile supports encoding formats such as RLE.
+- Both C++ TsFile and Java TsFile table models support tag filtering.
+- C++ TsFile supports writing data of the TEXT type.
+- Added the CAMEL encoding method.
+- ...
+
+## Improvement/Bugfix
+
+- Fixed the issue where the CppTsFile write and query interfaces had various exceptions when handling null values.
+- Fixed the issue where Cpp TsFile failed to write data when TAG and FIELD columns were all empty (only timestamps existed with no actual data).
+- Fixed the issue where column names were all converted to lowercase when constructing a Tablet in Cpp TsFile, resulting in the failure to add values to Tablets constructed with uppercase column names.
+- Fixed the issue where queries would throw errors when the values of TEXT-type columns in the CPP TsFile table model were partially empty.
+- Fixed security vulnerabilities CVE-2025-12183, CVE-2025-66566 and CVE-2025-11226.
+- ...
+
+# Apache TsFile 2.1.1
+
+## Improvement/Bugfix
+* [JAVA] AbstractAlignedTimeSeriesMetadata.typeMatch always return true in #538
+* [JAVA] Ignore the null value passed in the Tablet.addValue method in #540
+* [JAVA] Implement extract time filters in #539
+* [JAVA] Init all series writer for AlignedChunkGroupWriter in #545
+* [JAVA] Check max tsfile version in #548
+* [JAVA] Include common classes in tsfile.jar to fix #501 in #510
+* [JAVA] Implement extract value filters in #554
+* [JAVA] Fix wrong Private-Package declaration (related to #551) in #556
+* [JAVA] Avoid repeated calculation of shallow size of map in #559
+* [JAVA] Refactor UnknownType to extend AbstractType in #561
+* [JAVA] Add Tablet.append in #562
+
+# Apache TsFile 2.1.0
+
+## New Feature
+- [Java] Support setting default compression by datatype(#523).
+- [Java] Support using environment variables to generate main encrypt key(#512).
+- [Java] Support estimating ram usage of measurement schema(#508).
+- [Java] Add TsFileLastReader to retrieve the last points in a TsFile(#498).
+- [Cpp/C/Python] Support TsFile Table reader and writer.
+
+## Improvement/Bugfix
+- [Java] Fix memory calculation of BinaryColumnBuilder(#530).
+- [Java] Resolved case sensitivity issue when reading column names(#518).
+- [Java] Fix npe when closing the last reader that has not been used(#513).
+- [Java] Fix float RLBE encoding loss of precision(#484).
+
+# Apache TsFile 2.0.3
+
+## Improvement/Bugfix
+* move ColumnCategory to an outer class in (#461)
+* restrict encrypt key length to 16 in (#467)
+* Cache hash code of StringArrayDeviceID in (#453)
+* Skip time column when generating TableSchema in (#414)
+* Check blank column name or table name in (#471)
+* Optimizations regarding chunk metadata sort & timeseries metadata serialization in (#470)
+* Remove redundant conversion in TableResultSet in (#473)
+* Add switch to disable native lz4 in (#480)
 
 # Apache TsFile 2.0.2
 
@@ -60,6 +148,34 @@
 - Fix tablet isNull method not correct by @HTHou in #255
 - Fixed the issue that the time of the first data item written to TSFile by measurement cannot be a negative number by @luoluoyuyu in #297
 - Fix float encoder overflow by @HTHou in #342
+
+# Apache TsFile 1.1.3
+
+* perf: Optimize aligned object memory size calculation
+* feat: add markRange / unmarkRange / merge for high-performance bit manipulation
+* Modify the TsFileSequenceReaderTimeseriesMetadataIterator next function to return a LinkedHashMap
+* fix GroupByMonthFilter.getTimeRanges
+* Fix bug in PaginationController
+* change config not found log to debug
+* Init all series writer for AlignedChunkGroupWriter
+* Added memory calculation for tablet
+* Dont print exception log when thread is interrupted
+* Bump lz4-java version to 1.10.1
+
+# Apache TsFile 1.1.2
+
+## Improvement/Bugfix
+
+* Fix the bug in parse date to int when year out of range by @HTHou in #500
+* Add TsFileLastReader for retrieving last points in a TsFile by @jt2594838 in #506
+* Added accountable function to measurementSchema by @Caideyipi in #509
+* Correct the retained size calculation for BinaryColumn and BinaryColumnBuilder by @JackieTien97 in #514
+* add switch to disable native lz4 (#480) by @jt2594838 in #515
+* Correct the memroy calculation of BinaryColumnBuilder by @JackieTien97 in #530
+* Fetch max tsblock line number each time from TSFileConfig by @JackieTien97 in #535
+* Support set default compression by data type & Bump org.apache.commons:commons-lang3 from 3.15.0 to 3.18.0 by @jt2594838 in #547
+* Avoid calculating shallow size of map by @shuwenwei in #566
+* Add methods for RamUsageEstimator by @shuwenwei in #570
 
 # Apache TsFile 1.1.1
 

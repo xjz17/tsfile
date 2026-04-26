@@ -92,14 +92,14 @@ void SeriesScanStream::pop_front(int64_t beyond_this_time) {
 int64_t SeriesScanStream::read_timestamp() {
     uint32_t ret_len = 0;
     bool is_null = false;
-    char *data = col_iter_->read(&ret_len, &is_null);
+    char* data = col_iter_->read(&ret_len, &is_null);
     ASSERT(ret_len == 8);
-    return *(int64_t *)data;
+    return *(int64_t*)data;
 }
 
 // get value object pointer at time @target_timestamp
 // if no such TV exists, return nullptr
-void *ValueAt::at(int64_t target_timestamp) {
+void* ValueAt::at(int64_t target_timestamp) {
     ASSERT(ssi_ != nullptr);
     if (cur_time_ > target_timestamp) {
         return nullptr;
@@ -120,10 +120,10 @@ void *ValueAt::at(int64_t target_timestamp) {
     uint32_t ret_len = 0;
     while (true) {
         while (!time_col_iter_->end()) {
-            char *iter_time_ptr = time_col_iter_->read(&ret_len);
-            cur_time_ = *(int64_t *)iter_time_ptr;
+            char* iter_time_ptr = time_col_iter_->read(&ret_len);
+            cur_time_ = *(int64_t*)iter_time_ptr;
             if (cur_time_ == target_timestamp) {
-                char *val_obj_ptr = value_col_iter_->read(&ret_len);
+                char* val_obj_ptr = value_col_iter_->read(&ret_len);
                 time_col_iter_->next();
                 value_col_iter_->next();
                 return val_obj_ptr;
@@ -174,7 +174,7 @@ void ValueAt::destroy() {
 #ifdef DEBUG_SE
 int depth = 0;
 struct DG {
-    explicit DG(int &depth) : depth_(depth) { depth_++; }
+    explicit DG(int& depth) : depth_(depth) { depth_++; }
     ~DG() { depth_--; }
     std::string get_indent() {
         std::string s;
@@ -183,7 +183,7 @@ struct DG {
         }
         return s;
     }
-    int &depth_;
+    int& depth_;
 };
 #endif
 
@@ -283,7 +283,7 @@ void Node::next_timestamp(int64_t beyond_this_time) {
     }
 }
 
-int QDSWithTimeGenerator::init(TsFileIOReader *io_reader, QueryExpression *qe) {
+int QDSWithTimeGenerator::init(TsFileIOReader* io_reader, QueryExpression* qe) {
     pa_.reset();
     pa_.init(512, common::MOD_TSFILE_READER);
     int ret = common::E_OK;  // cppcheck-suppress unreadVariable
@@ -294,7 +294,7 @@ int QDSWithTimeGenerator::init(TsFileIOReader *io_reader, QueryExpression *qe) {
     std::vector<common::TSDataType> data_types;
     column_names.reserve(paths.size());
     data_types.reserve(paths.size());
-    for (const auto &path : paths) {
+    for (const auto& path : paths) {
         column_names.push_back(path.full_path_);
     }
     index_lookup_.insert({"time", 0});
@@ -303,6 +303,7 @@ int QDSWithTimeGenerator::init(TsFileIOReader *io_reader, QueryExpression *qe) {
         index_lookup_.insert({paths[i].measurement_, i + 1});
         if (RET_FAIL(io_reader_->alloc_ssi(
                 paths[i].device_id_, paths[i].measurement_, va.ssi_, pa_))) {
+            return ret;
         } else {
             va.io_reader_ = io_reader_;
             data_types.push_back(va.value_col_iter_->get_data_type());
@@ -312,11 +313,12 @@ int QDSWithTimeGenerator::init(TsFileIOReader *io_reader, QueryExpression *qe) {
     result_set_metadata_ =
         std::make_shared<ResultSetMetadata>(column_names, data_types);
     row_record_ = new RowRecord(value_at_vec_.size() + 1);
-    tree_ = construct_node_tree(qe->expression_);
-    return E_OK;
+    ret = construct_node_tree(qe->expression_, tree_);
+    if (ret == E_NO_MORE_DATA) return E_OK;
+    return ret;
 }
 
-void destroy_node(Node *node) {
+void destroy_node(Node* node) {
     if (node->left_) {
         destroy_node(node->left_);
     }
@@ -346,7 +348,7 @@ void QDSWithTimeGenerator::close() {
     pa_.destroy();
 }
 
-int QDSWithTimeGenerator::next(bool &has_next) {
+int QDSWithTimeGenerator::next(bool& has_next) {
     if (tree_ == nullptr) {
         has_next = false;
         return E_OK;
@@ -357,17 +359,18 @@ int QDSWithTimeGenerator::next(bool &has_next) {
         return E_OK;
     }
     row_record_->set_timestamp(timestamp);
-    row_record_->get_field(0)->set_value(TSDataType::INT64, &timestamp, pa_);
+    row_record_->get_field(0)->set_value(TSDataType::INT64, &timestamp,
+                                         sizeof(timestamp), pa_);
 #if DEBUG_SE
     std::cout << "QDSWithTimeGenerator::get_next: timestamp=" << timestamp
               << ", will generate row at this timestamp." << std::endl;
 #endif
 
     for (size_t i = 0; i < value_at_vec_.size(); i++) {
-        ValueAt &va = value_at_vec_[i];
-        void *val_obj_ptr = va.at(timestamp);
+        ValueAt& va = value_at_vec_[i];
+        void* val_obj_ptr = va.at(timestamp);
         row_record_->get_field(i + 1)->set_value(va.data_type_, val_obj_ptr,
-                                                 pa_);
+                                                 get_len(va.data_type_), pa_);
     }
 
     tree_->next_timestamp(timestamp);
@@ -378,48 +381,50 @@ int QDSWithTimeGenerator::next(bool &has_next) {
     return E_OK;
 }
 
-bool QDSWithTimeGenerator::is_null(const std::string &column_name) {
+bool QDSWithTimeGenerator::is_null(const std::string& column_name) {
     auto iter = index_lookup_.find(column_name);
     if (iter == index_lookup_.end()) {
         return true;
     } else {
-        return is_null(iter->second);
+        return is_null(iter->second + 1);
     }
 }
 
 bool QDSWithTimeGenerator::is_null(uint32_t column_index) {
-    return row_record_->get_field(column_index) == nullptr;
+    return row_record_->get_field(column_index - 1) == nullptr ||
+           row_record_->get_field(column_index - 1)->type_ == NULL_TYPE;
 }
 
-RowRecord *QDSWithTimeGenerator::get_row_record() { return row_record_; }
+RowRecord* QDSWithTimeGenerator::get_row_record() { return row_record_; }
 
 std::shared_ptr<ResultSetMetadata> QDSWithTimeGenerator::get_metadata() {
     return result_set_metadata_;
 }
-Node *QDSWithTimeGenerator::construct_node_tree(Expression *expr) {
+
+int QDSWithTimeGenerator::construct_node_tree(Expression* expr, Node*& node) {
+    int ret = E_OK;
     if (expr->type_ == AND_EXPR || expr->type_ == OR_EXPR) {
-        Node *root = nullptr;
         if (expr->type_ == AND_EXPR) {
-            root = new Node(AND_NODE);
+            node = new Node(AND_NODE);
         } else {
-            root = new Node(OR_NODE);
+            node = new Node(OR_NODE);
         }
-        root->left_ = construct_node_tree(expr->left_);
-        root->right_ = construct_node_tree(expr->right_);
-        return root;
+        if (RET_FAIL(construct_node_tree(expr->left_, node->left_))) {
+        } else if (RET_FAIL(construct_node_tree(expr->right_, node->right_))) {
+        }
     } else if (expr->type_ == SERIES_EXPR) {
-        Node *leaf = new Node(LEAF_NODE);
-        Path &path = expr->series_path_;
+        Node* leaf = new Node(LEAF_NODE);
+        Path& path = expr->series_path_;
         int ret = io_reader_->alloc_ssi(path.device_id_, path.measurement_,
                                         leaf->sss_.ssi_, pa_, expr->filter_);
         if (E_OK == ret) {
             leaf->sss_.init();
+            node = leaf;
         } else {
             // do nothing, this leaf node will return no data at all.
         }
-        return leaf;
     }
-    return nullptr;
+    return ret;
 }
 
 }  // namespace storage

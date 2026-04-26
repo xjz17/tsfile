@@ -30,12 +30,20 @@ namespace common {
 
 // String that use PageArena
 struct String {
-    char *buf_;
+    char* buf_;
     uint32_t len_;
 
     String() : buf_(nullptr), len_(0) {}
-    String(char *buf, uint32_t len) : buf_(buf), len_(len) {}
-    String(const std::string& str, common::PageArena& pa) : buf_(nullptr), len_(0) {
+    String(char* buf, uint32_t len) : buf_(buf), len_(len) {}
+
+    // NOTE:
+    // This constructor accepts a const char* to preserve constness for possible
+    // future copying. The internal buf_ must be considered read-only.
+    String(const char* buf, uint32_t len)
+        : buf_(const_cast<char*>(buf)), len_(len) {}
+
+    String(const std::string& str, common::PageArena& pa)
+        : buf_(nullptr), len_(0) {
         dup_from(str, pa);
     }
     String(const std::string& str) {
@@ -47,7 +55,7 @@ struct String {
         len_ = 0;
         buf_ = nullptr;
     }
-    FORCE_INLINE int dup_from(const std::string &str, common::PageArena &pa) {
+    FORCE_INLINE int dup_from(const std::string& str, common::PageArena& pa) {
         len_ = str.size();
         if (UNLIKELY(len_ == 0)) {
             return common::E_OK;
@@ -60,13 +68,14 @@ struct String {
         return common::E_OK;
     }
 
-    FORCE_INLINE bool operator==(const String &other) const {
+    FORCE_INLINE bool operator==(const String& other) const {
         return equal_to(other);
     }
 
-    FORCE_INLINE int dup_from(const String &str, common::PageArena &pa) {
+    FORCE_INLINE int dup_from(const String& str, common::PageArena& pa) {
         len_ = str.len_;
         if (UNLIKELY(len_ == 0)) {
+            buf_ = nullptr;
             return common::E_OK;
         }
         buf_ = pa.alloc(len_);
@@ -76,8 +85,23 @@ struct String {
         memcpy(buf_, str.buf_, len_);
         return common::E_OK;
     }
-    FORCE_INLINE int build_from(const String &s1, const String &s2,
-                                common::PageArena &pa) {
+
+    FORCE_INLINE int dup_from(const char* str, uint32_t len,
+                              common::PageArena& pa) {
+        len_ = len;
+        if (UNLIKELY(len_ == 0)) {
+            return common::E_OK;
+        }
+        buf_ = pa.alloc(len_);
+        if (IS_NULL(buf_)) {
+            return common::E_OOM;
+        }
+        memcpy(buf_, str, len_);
+        return common::E_OK;
+    }
+
+    FORCE_INLINE int build_from(const String& s1, const String& s2,
+                                common::PageArena& pa) {
         len_ = s1.len_ + s2.len_;
         buf_ = pa.alloc(len_);
         if (IS_NULL(buf_)) {
@@ -87,11 +111,11 @@ struct String {
         memcpy(buf_ + s1.len_, s2.buf_, s2.len_);
         return common::E_OK;
     }
-    FORCE_INLINE void shallow_copy_from(const String &src) {
+    FORCE_INLINE void shallow_copy_from(const String& src) {
         buf_ = src.buf_;
         len_ = src.len_;
     }
-    FORCE_INLINE bool equal_to(const String &that) const {
+    FORCE_INLINE bool equal_to(const String& that) const {
         return (len_ == 0 && that.len_ == 0) ||
                ((len_ == that.len_) && (0 == memcmp(buf_, that.buf_, len_)));
     }
@@ -104,7 +128,7 @@ struct String {
     // }
 
     // strict less than. If @this equals to @that, return false.
-    FORCE_INLINE bool less_than(const String &that) const {
+    FORCE_INLINE bool less_than(const String& that) const {
         if (len_ == 0 || that.len_ == 0) {
             return false;
         }
@@ -122,9 +146,15 @@ struct String {
     // return = 0, if this = that
     // return < 0, if this < that
     // return > 0, if this > that
-    FORCE_INLINE int compare(const String &that) const {
-        if (len_ == 0 || that.len_ == 0) {
+    FORCE_INLINE int compare(const String& that) const {
+        if (len_ == 0 && that.len_ == 0) {
             return 0;
+        }
+        if (len_ == 0) {
+            return -1;
+        }
+        if (that.len_ == 0) {
+            return 1;
         }
         uint32_t min_len = std::min(len_, that.len_);
         int cmp_res = memcmp(buf_, that.buf_, min_len);
@@ -135,19 +165,19 @@ struct String {
         }
     }
 
-    FORCE_INLINE void max(const String &that, common::PageArena &pa) {
+    FORCE_INLINE void max(const String& that, common::PageArena& pa) {
         if (compare(that) < 0) {
             this->dup_from(that, pa);
         }
     }
 
-    FORCE_INLINE void min(const String &that, common::PageArena &pa) {
+    FORCE_INLINE void min(const String& that, common::PageArena& pa) {
         if (compare(that) > 0) {
             this->dup_from(that, pa);
         }
     }
 
-    bool operator<(const String &other) const {
+    bool operator<(const String& other) const {
         if (this->is_null() && other.is_null()) {
             return false;
         }
@@ -169,7 +199,7 @@ struct String {
     std::string to_std_string() const { return std::string(buf_, len_); }
 
 #ifndef NDEBUG
-    friend std::ostream &operator<<(std::ostream &os, const String &s) {
+    friend std::ostream& operator<<(std::ostream& os, const String& s) {
         os << s.len_ << "@";
         for (uint32_t i = 0; i < s.len_; i++) {
             os << s.buf_[i];
@@ -180,7 +210,7 @@ struct String {
 };
 
 struct StringLessThan {
-    FORCE_INLINE bool operator()(const String &s1, const String &s2) const {
+    FORCE_INLINE bool operator()(const String& s1, const String& s2) const {
         return s1.less_than(s2);
     }
 };

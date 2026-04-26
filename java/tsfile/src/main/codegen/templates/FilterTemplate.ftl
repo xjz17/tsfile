@@ -23,8 +23,9 @@ import static org.apache.tsfile.utils.ReadWriteIOUtils.ClassSerializeId.${filter
 
 import org.apache.tsfile.block.column.Column;
 import org.apache.tsfile.read.common.block.TsBlock;
-<#if filter.dataType == "Binary">
+<#if filter.dataType == "Binary" || filter.dataType == "String">
 import org.apache.tsfile.utils.Binary;
+import java.nio.charset.StandardCharsets;
 </#if>
 import org.apache.tsfile.utils.ReadWriteIOUtils;
 
@@ -59,6 +60,72 @@ public abstract class ${className} extends ValueFilter {
     return valueSatisfy(value);
   }
 
+  <#if filter.dataType == "long">
+  @Override
+  public boolean satisfyInteger(long time, int value){
+  return satisfyLong(time, value);
+  }
+  </#if>
+
+  <#if filter.dataType == "float">
+  @Override
+  public boolean satisfyInteger(long time, int value){
+  return satisfyFloat(time, value);
+  }
+  </#if>
+
+  <#if filter.dataType == "double">
+  @Override
+  public boolean satisfyInteger(long time, int value){
+  return satisfyDouble(time, value);
+  }
+
+  @Override
+  public boolean satisfyLong(long time, long value){
+  return satisfyDouble(time, value);
+  }
+
+  @Override
+  public boolean satisfyFloat(long time, float value){
+  return satisfyDouble(time, value);
+  }
+  </#if>
+
+  <#if filter.dataType == "String" || filter.dataType == "Binary">
+  @Override
+  public boolean satisfyInteger(long time, int value){
+  return satisfyBinary(time, new Binary(String.valueOf(value), StandardCharsets.UTF_8));
+  }
+
+  @Override
+  public boolean satisfyLong(long time, long value){
+  return satisfyBinary(time, new Binary(String.valueOf(value), StandardCharsets.UTF_8));
+  }
+
+  @Override
+  public boolean satisfyFloat(long time, float value){
+  return satisfyBinary(time, new Binary(String.valueOf(value), StandardCharsets.UTF_8));
+  }
+
+  @Override
+  public boolean satisfyDouble(long time, double value){
+  return satisfyBinary(time, new Binary(String.valueOf(value), StandardCharsets.UTF_8));
+  }
+
+  @Override
+  public boolean satisfyBoolean(long time, boolean value){
+  return satisfyBinary(time, new Binary(String.valueOf(value), StandardCharsets.UTF_8));
+  }
+
+  <#if filter.javaBoxName == "Tag">
+  <#else>
+  @Override
+  public boolean satisfyString(long time, String value){
+  return satisfyBinary(time, new Binary(value, StandardCharsets.UTF_8));
+  }
+  </#if>
+  </#if>
+
   @Override
   public ClassSerializeId getClassSerializeId() {
     return ${filter.classSerializeName};
@@ -66,6 +133,7 @@ public abstract class ${className} extends ValueFilter {
 
   protected abstract boolean valueSatisfy(${filter.dataType} value);
 
+ <#if filter.javaBoxName != "Tag">
   @Override
   public boolean[] satisfyTsBlock(boolean[] selection, TsBlock tsBlock) {
     Column valueColumn = tsBlock.getValueColumns()[measurementIndex];
@@ -83,6 +151,12 @@ public abstract class ${className} extends ValueFilter {
     }
     return satisfyInfo;
   }
+ <#else >
+   @Override
+   public boolean[] satisfyTsBlock(boolean[] selection, TsBlock tsBlock) {
+     throw new IllegalArgumentException("TagFilter cannot be applied to TsBlock");
+   }
+ </#if>
 
   @Override
   public void serialize(DataOutputStream outputStream) throws IOException {

@@ -20,9 +20,12 @@
 #ifndef READER_QUERY_DATA_SET_H
 #define READER_QUERY_DATA_SET_H
 
+#include <algorithm>
+#include <string>
 #include <unordered_map>
 
 #include "common/row_record.h"
+#include "common/tsblock/tsblock.h"
 
 namespace storage {
 /**
@@ -81,6 +84,8 @@ class ResultSetMetadata {
     std::vector<common::TSDataType> column_types_;
 };
 
+class ResultSetIterator;
+
 /**
  * @brief ResultSet is the query result of the TsfileReader. It provides access
  * to the results.
@@ -93,7 +98,7 @@ class ResultSetMetadata {
  * it should be QDSWithTimeGenerator.
  * @note If the query uses the table model, the cast should be TableResultSet
  */
-class ResultSet {
+class ResultSet : std::enable_shared_from_this<ResultSet> {
    public:
     ResultSet() {}
     virtual ~ResultSet() {}
@@ -118,6 +123,11 @@ class ResultSet {
      * @return true if the value is null, false otherwise
      */
     virtual bool is_null(uint32_t column_index) = 0;
+
+    /**
+     * @brief Simple iterator for ResultSet with smart pointers
+     */
+    virtual ResultSetIterator iterator();
 
     /**
      * @brief Get the value of the column by column name
@@ -146,6 +156,11 @@ class ResultSet {
         ASSERT(column_index >= 0 && column_index < row_record->get_col_num());
         return row_record->get_field(column_index)->get_value<T>();
     }
+
+    virtual int get_next_tsblock(common::TsBlock*& block) {
+        return common::E_INVALID_ARG;
+    }
+
     /**
      * @brief Get the row record of the result set
      *
@@ -167,7 +182,33 @@ class ResultSet {
     virtual void close() = 0;
 
    protected:
-    std::unordered_map<std::string, uint32_t> index_lookup_;
+    struct CaseInsensitiveHash {
+        std::size_t operator()(const std::string& str) const {
+            std::string lowerStr = str;
+            std::transform(lowerStr.begin(), lowerStr.end(), lowerStr.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            return std::hash<std::string>()(lowerStr);
+        }
+    };
+
+    struct CaseInsensitiveEqual {
+        bool operator()(const std::string& lhs, const std::string& rhs) const {
+            if (lhs.size() != rhs.size()) {
+                return false;
+            }
+            for (size_t i = 0; i < lhs.size(); ++i) {
+                if (std::tolower(lhs[i]) != std::tolower(rhs[i])) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    };
+
+    std::unordered_map<std::string, uint32_t, CaseInsensitiveHash,
+                       CaseInsensitiveEqual>
+        index_lookup_;
+    RowRecord* row_record_ = nullptr;
     common::PageArena pa_;
 };
 
@@ -185,6 +226,171 @@ inline common::String* ResultSet::get_value(uint32_t column_index) {
     RowRecord* row_record = get_row_record();
     ASSERT(column_index >= 0 && column_index < row_record->get_col_num());
     return row_record->get_field(column_index)->get_string_value();
+}
+
+template <>
+inline std::tm ResultSet::get_value(const std::string& full_name) {
+    RowRecord* row_record = get_row_record();
+    ASSERT(index_lookup_.count(full_name));
+    uint32_t index = index_lookup_[full_name];
+    ASSERT(index >= 0 && index < row_record->get_col_num());
+    return row_record->get_field(index)->get_date_value();
+}
+template <>
+inline std::tm ResultSet::get_value(uint32_t column_index) {
+    column_index--;
+    RowRecord* row_record = get_row_record();
+    ASSERT(column_index >= 0 && column_index < row_record->get_col_num());
+    return row_record->get_field(column_index)->get_date_value();
+}
+
+/**
+ * @brief Simple iterator for ResultSet with smart pointers
+ */
+class ResultSetIterator {
+   public:
+    explicit ResultSetIterator(ResultSet* result_set)
+        : result_set_(result_set) {}
+
+    /**
+     * @brief Check if there is a next row available
+     */
+    bool hasNext() {
+        if (cached_record_ != nullptr) {
+            return true;
+        }
+        if (exhausted_) {
+            return false;
+        }
+
+        bool has_next = false;
+        if (result_set_) {
+            int ret = result_set_->next(has_next);
+            ASSERT(ret == 0);
+            // TODO:handle error in hasNext.
+            (void)ret;
+            if (has_next) {
+                cached_record_ = result_set_->get_row_record();
+            } else {
+                exhausted_ = true;
+            }
+        }
+        return has_next;
+    }
+
+    /**
+     * @brief Get the next row record
+     */
+    RowRecord* next() {
+        if (!hasNext()) {
+            return nullptr;
+        }
+        RowRecord* ret = cached_record_;
+        cached_record_ = nullptr;
+        return ret;
+    }
+
+    /**
+     * @brief Get the underlying ResultSet for direct access
+     */
+    ResultSet* getResultSet() const { return result_set_; }
+
+   private:
+    ResultSet* result_set_ = nullptr;
+    RowRecord* cached_record_ = nullptr;
+    bool exhausted_ = false;
+};
+
+inline ResultSetIterator ResultSet::iterator() {
+    return ResultSetIterator(this);
+}
+
+static MAYBE_UNUSED void print_table_result_set(
+    storage::ResultSet* table_result_set) {
+    if (table_result_set == nullptr) {
+        std::cout << "TableResultSet is nullptr" << std::endl;
+        return;
+    }
+
+    auto metadata = table_result_set->get_metadata();
+    if (metadata == nullptr) {
+        std::cout << "Metadata is nullptr" << std::endl;
+        return;
+    }
+
+    uint32_t column_count = metadata->get_column_count();
+    if (column_count == 0) {
+        std::cout << "No columns in result set" << std::endl;
+        return;
+    }
+
+    for (uint32_t i = 1; i <= column_count; i++) {
+        std::cout << metadata->get_column_name(i);
+        if (i < column_count) {
+            std::cout << "\t";
+        }
+    }
+    std::cout << std::endl;
+
+    bool has_next = false;
+    int row_count = 0;
+    while (IS_SUCC(table_result_set->next(has_next)) && has_next) {
+        for (uint32_t i = 1; i <= column_count; i++) {
+            if (table_result_set->is_null(i)) {
+                std::cout << "NULL";
+            } else {
+                common::TSDataType col_type = metadata->get_column_type(i);
+                switch (col_type) {
+                    case common::INT64: {
+                        int64_t val = table_result_set->get_value<int64_t>(i);
+                        std::cout << val;
+                        break;
+                    }
+                    case common::INT32: {
+                        int32_t val = table_result_set->get_value<int32_t>(i);
+                        std::cout << val;
+                        break;
+                    }
+                    case common::FLOAT: {
+                        float val = table_result_set->get_value<float>(i);
+                        std::cout << val;
+                        break;
+                    }
+                    case common::DOUBLE: {
+                        double val = table_result_set->get_value<double>(i);
+                        std::cout << val;
+                        break;
+                    }
+                    case common::BOOLEAN: {
+                        bool val = table_result_set->get_value<bool>(i);
+                        std::cout << (val ? "true" : "false");
+                        break;
+                    }
+                    case common::TEXT:
+                    case common::STRING: {
+                        common::String* str =
+                            table_result_set->get_value<common::String*>(i);
+                        if (str == nullptr) {
+                            std::cout << "null";
+                        } else {
+                            std::cout << std::string(str->buf_, str->len_);
+                        }
+                        break;
+                    }
+                    default: {
+                        std::cout << "<UNKNOWN>";
+                        break;
+                    }
+                }
+            }
+            if (i < column_count) {
+                std::cout << "\t";
+            }
+        }
+        std::cout << std::endl;
+        row_count++;
+    }
+    std::cout << "Total rows: " << row_count << std::endl;
 }
 
 }  // namespace storage

@@ -44,6 +44,7 @@ import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.LongConsumer;
 
 import static org.apache.tsfile.read.reader.series.PaginationController.UNLIMITED_PAGINATION_CONTROLLER;
 import static org.apache.tsfile.utils.Preconditions.checkArgument;
@@ -196,6 +197,7 @@ public class PageReader implements IPageReader {
         case TEXT:
         case BLOB:
         case STRING:
+        case OBJECT:
           Binary aBinary = valueDecoder.readBinary(valueBuffer);
           if (!isDeleted(timestamp)
               && (allSatisfy || recordFilter.satisfyBinary(timestamp, aBinary))) {
@@ -211,10 +213,15 @@ public class PageReader implements IPageReader {
 
   @Override
   public TsBlock getAllSatisfiedData() throws IOException {
+    return getAllSatisfiedData(null);
+  }
+
+  @Override
+  public TsBlock getAllSatisfiedData(LongConsumer filterRowsRecorder) throws IOException {
     uncompressDataIfNecessary();
     TsBlockBuilder builder;
     int initialExpectedEntries = (int) pageHeader.getStatistics().getCount();
-    if (paginationController.hasLimit()) {
+    if (paginationController.hasSetLimit()) {
       initialExpectedEntries =
           (int) Math.min(initialExpectedEntries, paginationController.getCurLimit());
     }
@@ -222,14 +229,18 @@ public class PageReader implements IPageReader {
 
     TimeColumnBuilder timeBuilder = builder.getTimeColumnBuilder();
     ColumnBuilder valueBuilder = builder.getColumnBuilder(0);
+    long allFilteredRows = 0;
     boolean allSatisfy = recordFilter == null || recordFilter.allSatisfy(this);
     switch (dataType) {
       case BOOLEAN:
         while (timeDecoder.hasNext(timeBuffer)) {
           long timestamp = timeDecoder.readLong(timeBuffer);
           boolean aBoolean = valueDecoder.readBoolean(valueBuffer);
-          if (isDeleted(timestamp)
-              || (!allSatisfy && !recordFilter.satisfyBoolean(timestamp, aBoolean))) {
+          if (isDeleted(timestamp)) {
+            continue;
+          }
+          if (!allSatisfy && !recordFilter.satisfyBoolean(timestamp, aBoolean)) {
+            allFilteredRows++;
             continue;
           }
           if (paginationController.hasCurOffset()) {
@@ -251,8 +262,11 @@ public class PageReader implements IPageReader {
         while (timeDecoder.hasNext(timeBuffer)) {
           long timestamp = timeDecoder.readLong(timeBuffer);
           int anInt = valueDecoder.readInt(valueBuffer);
-          if (isDeleted(timestamp)
-              || (!allSatisfy && !recordFilter.satisfyInteger(timestamp, anInt))) {
+          if (isDeleted(timestamp)) {
+            continue;
+          }
+          if (!allSatisfy && !recordFilter.satisfyInteger(timestamp, anInt)) {
+            allFilteredRows++;
             continue;
           }
           if (paginationController.hasCurOffset()) {
@@ -274,8 +288,11 @@ public class PageReader implements IPageReader {
         while (timeDecoder.hasNext(timeBuffer)) {
           long timestamp = timeDecoder.readLong(timeBuffer);
           long aLong = valueDecoder.readLong(valueBuffer);
-          if (isDeleted(timestamp)
-              || (!allSatisfy && !recordFilter.satisfyLong(timestamp, aLong))) {
+          if (isDeleted(timestamp)) {
+            continue;
+          }
+          if (!allSatisfy && !recordFilter.satisfyLong(timestamp, aLong)) {
+            allFilteredRows++;
             continue;
           }
           if (paginationController.hasCurOffset()) {
@@ -296,8 +313,11 @@ public class PageReader implements IPageReader {
         while (timeDecoder.hasNext(timeBuffer)) {
           long timestamp = timeDecoder.readLong(timeBuffer);
           float aFloat = valueDecoder.readFloat(valueBuffer);
-          if (isDeleted(timestamp)
-              || (!allSatisfy && !recordFilter.satisfyFloat(timestamp, aFloat))) {
+          if (isDeleted(timestamp)) {
+            continue;
+          }
+          if (!allSatisfy && !recordFilter.satisfyFloat(timestamp, aFloat)) {
+            allFilteredRows++;
             continue;
           }
           if (paginationController.hasCurOffset()) {
@@ -318,8 +338,11 @@ public class PageReader implements IPageReader {
         while (timeDecoder.hasNext(timeBuffer)) {
           long timestamp = timeDecoder.readLong(timeBuffer);
           double aDouble = valueDecoder.readDouble(valueBuffer);
-          if (isDeleted(timestamp)
-              || (!allSatisfy && !recordFilter.satisfyDouble(timestamp, aDouble))) {
+          if (isDeleted(timestamp)) {
+            continue;
+          }
+          if (!allSatisfy && !recordFilter.satisfyDouble(timestamp, aDouble)) {
+            allFilteredRows++;
             continue;
           }
           if (paginationController.hasCurOffset()) {
@@ -339,11 +362,15 @@ public class PageReader implements IPageReader {
       case TEXT:
       case BLOB:
       case STRING:
+      case OBJECT:
         while (timeDecoder.hasNext(timeBuffer)) {
           long timestamp = timeDecoder.readLong(timeBuffer);
           Binary aBinary = valueDecoder.readBinary(valueBuffer);
-          if (isDeleted(timestamp)
-              || (!allSatisfy && !recordFilter.satisfyBinary(timestamp, aBinary))) {
+          if (isDeleted(timestamp)) {
+            continue;
+          }
+          if (!allSatisfy && !recordFilter.satisfyBinary(timestamp, aBinary)) {
+            allFilteredRows++;
             continue;
           }
           if (paginationController.hasCurOffset()) {
@@ -362,6 +389,9 @@ public class PageReader implements IPageReader {
         break;
       default:
         throw new UnSupportedDataTypeException(String.valueOf(dataType));
+    }
+    if (filterRowsRecorder != null && allFilteredRows > 0) {
+      filterRowsRecorder.accept(allFilteredRows);
     }
     return builder.build();
   }
@@ -411,6 +441,11 @@ public class PageReader implements IPageReader {
   @Override
   public boolean isModified() {
     return pageHeader.isModified();
+  }
+
+  @Override
+  public void setModified(boolean modified) {
+    pageHeader.setModified(modified);
   }
 
   @Override

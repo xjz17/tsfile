@@ -28,12 +28,9 @@
 
 namespace storage {
 
-#define VCW_DO_WRITE_FOR_TYPE(TSDATATYPE, ISNULL)                           \
+#define VCW_DO_WRITE_FOR_TYPE(ISNULL)                                       \
     {                                                                       \
         int ret = common::E_OK;                                             \
-        if (UNLIKELY(data_type_ != TSDATATYPE)) {                           \
-            return common::E_TYPE_NOT_MATCH;                                \
-        }                                                                   \
         if (RET_FAIL(value_page_writer_.write(timestamp, value, ISNULL))) { \
             return ret;                                                     \
         }                                                                   \
@@ -56,39 +53,94 @@ class ValueChunkWriter {
           first_page_data_(),
           first_page_statistic_(nullptr),
           chunk_header_(),
-          num_of_pages_(0) {}
+          num_of_pages_(0),
+          enable_page_seal_if_full_(true) {}
     ~ValueChunkWriter() { destroy(); }
-    int init(const common::ColumnSchema &col_schema);
-    int init(const std::string &measurement_name, common::TSDataType data_type,
+    int init(const common::ColumnSchema& col_schema);
+    int init(const std::string& measurement_name, common::TSDataType data_type,
              common::TSEncoding encoding,
              common::CompressionType compression_type);
     void reset();
     void destroy();
 
     FORCE_INLINE int write(int64_t timestamp, bool value, bool isnull) {
-        VCW_DO_WRITE_FOR_TYPE(common::BOOLEAN, isnull);
+        if (UNLIKELY(data_type_ != common::BOOLEAN)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+        VCW_DO_WRITE_FOR_TYPE(isnull);
     }
+
     FORCE_INLINE int write(int64_t timestamp, int32_t value, bool isnull) {
-        VCW_DO_WRITE_FOR_TYPE(common::INT32, isnull);
+        if (UNLIKELY(data_type_ != common::INT32 &&
+                     data_type_ != common::DATE)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+        VCW_DO_WRITE_FOR_TYPE(isnull);
     }
+
     FORCE_INLINE int write(int64_t timestamp, int64_t value, bool isnull) {
-        VCW_DO_WRITE_FOR_TYPE(common::INT64, isnull);
+        if (UNLIKELY(data_type_ != common::INT64 &&
+                     data_type_ != common::TIMESTAMP)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+        VCW_DO_WRITE_FOR_TYPE(isnull);
     }
+
     FORCE_INLINE int write(int64_t timestamp, float value, bool isnull) {
-        VCW_DO_WRITE_FOR_TYPE(common::FLOAT, isnull);
+        if (UNLIKELY(data_type_ != common::FLOAT)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+        VCW_DO_WRITE_FOR_TYPE(isnull);
     }
+
     FORCE_INLINE int write(int64_t timestamp, double value, bool isnull) {
-        VCW_DO_WRITE_FOR_TYPE(common::DOUBLE, isnull);
+        if (UNLIKELY(data_type_ != common::DOUBLE)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+        VCW_DO_WRITE_FOR_TYPE(isnull);
+    }
+
+    FORCE_INLINE int write(int64_t timestamp, common::String value,
+                           bool isnull) {
+        if (UNLIKELY(data_type_ != common::STRING &&
+                     data_type_ != common::TEXT &&
+                     data_type_ != common::BLOB)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+        VCW_DO_WRITE_FOR_TYPE(isnull);
     }
 
     int end_encode_chunk();
-    common::ByteStream &get_chunk_data() { return chunk_data_; }
-    Statistic *get_chunk_statistic() { return chunk_statistic_; }
+    common::ByteStream& get_chunk_data() { return chunk_data_; }
+    Statistic* get_chunk_statistic() { return chunk_statistic_; }
     FORCE_INLINE int32_t num_of_pages() const { return num_of_pages_; }
 
     int64_t estimate_max_series_mem_size();
 
     bool hasData();
+
+    /** True if the current (unsealed) page has at least one write (including
+     * nulls). */
+    bool has_current_page_data() const {
+        return value_page_writer_.get_total_write_count() > 0;
+    }
+
+    FORCE_INLINE uint32_t get_point_numer() const {
+        return value_page_writer_.get_point_numer();
+    }
+
+    /**
+     * Force seal the current page (for aligned table model: when time page
+     * seals due to memory/point threshold, all value pages must seal together).
+     * @return E_OK on success.
+     */
+    int seal_current_page() { return seal_cur_page(false); }
+
+    // For aligned writer: allow disabling the automatic page-size/point-number
+    // check so the caller can seal pages at chosen boundaries.
+    FORCE_INLINE void set_enable_page_seal_if_full(bool enable) {
+        enable_page_seal_if_full_ = enable;
+    }
 
    private:
     FORCE_INLINE bool is_cur_page_full() const {
@@ -99,6 +151,9 @@ class ValueChunkWriter {
                 common::g_config_value_.page_writer_max_memory_bytes_);
     }
     FORCE_INLINE int seal_cur_page_if_full() {
+        if (UNLIKELY(!enable_page_seal_if_full_)) {
+            return common::E_OK;
+        }
         if (UNLIKELY(is_cur_page_full())) {
             return seal_cur_page(false);
         }
@@ -112,21 +167,24 @@ class ValueChunkWriter {
         }
     }
     int seal_cur_page(bool end_chunk);
-    void save_first_page_data(ValuePageWriter &first_page_writer);
-    int write_first_page_data(common::ByteStream &pages_data, bool with_statistic = true);
+    void save_first_page_data(ValuePageWriter& first_page_writer);
+    int write_first_page_data(common::ByteStream& pages_data,
+                              bool with_statistic = true);
 
    private:
     common::TSDataType data_type_;
     ValuePageWriter value_page_writer_;
-    Statistic *chunk_statistic_;
-    common::ByteStream chunk_data_;
+    Statistic* chunk_statistic_;
+    common::ByteStream chunk_data_{common::MOD_CW_PAGES_DATA};
 
     // to save first page data
     ValuePageData first_page_data_;
-    Statistic *first_page_statistic_;
+    Statistic* first_page_statistic_;
 
     ChunkHeader chunk_header_;
     int32_t num_of_pages_;
+    // If false, write() won't auto-seal when the current page becomes full.
+    bool enable_page_seal_if_full_;
 };
 
 }  // end namespace storage

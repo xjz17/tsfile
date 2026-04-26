@@ -29,6 +29,8 @@ import org.apache.tsfile.write.UnSupportedDataTypeException;
 
 import java.time.LocalDate;
 
+import static org.apache.tsfile.utils.BytesUtils.parseObjectByteArrayToString;
+
 /**
  * Field is component of one {@code RowRecord} which stores a value in specific data type. The value
  * type of Field is primitive(int long, float, double, binary, boolean).
@@ -71,6 +73,7 @@ public class Field {
         case TEXT:
         case BLOB:
         case STRING:
+        case OBJECT:
           out.setBinaryV(field.getBinaryV());
           break;
         default:
@@ -143,6 +146,8 @@ public class Field {
   public Binary getBinaryV() {
     if (dataType == null) {
       throw new NullFieldException();
+    } else if (dataType == TSDataType.OBJECT) {
+      throw new UnsupportedOperationException("OBJECT Type only support getStringValue");
     }
     return binaryV;
   }
@@ -183,6 +188,8 @@ public class Field {
       case TEXT:
       case STRING:
         return binaryV.toString();
+      case OBJECT:
+        return parseObjectByteArrayToString(binaryV.getValues());
       case BLOB:
         return BytesUtils.parseBlobByteArrayToString(binaryV.getValues());
       default:
@@ -217,6 +224,8 @@ public class Field {
       case BLOB:
       case STRING:
         return getBinaryV();
+      case OBJECT:
+        return getStringValue();
       default:
         throw new UnSupportedDataTypeException(dataType.toString());
     }
@@ -248,6 +257,7 @@ public class Field {
       case TEXT:
       case BLOB:
       case STRING:
+      case OBJECT:
         field.setBinaryV((Binary) value);
         break;
       default:
@@ -278,6 +288,7 @@ public class Field {
       case TEXT:
       case BLOB:
       case STRING:
+      case OBJECT:
         field.setBinaryV(value.getBinary());
         break;
       default:

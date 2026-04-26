@@ -46,9 +46,9 @@ struct PageData {
     uint32_t value_buf_size_;
     uint32_t uncompressed_size_;
     uint32_t compressed_size_;
-    char *uncompressed_buf_;
-    char *compressed_buf_;
-    Compressor *compressor_;
+    char* uncompressed_buf_;
+    char* compressed_buf_;
+    Compressor* compressor_;
 
     PageData()
         : time_buf_size_(0),
@@ -58,8 +58,8 @@ struct PageData {
           uncompressed_buf_(nullptr),
           compressed_buf_(nullptr),
           compressor_(nullptr) {}
-    int init(common::ByteStream &time_bs, common::ByteStream &value_bs,
-             Compressor *compressor);
+    int init(common::ByteStream& time_bs, common::ByteStream& value_bs,
+             Compressor* compressor);
     void destroy() {
         // Be careful about the memory
         if (uncompressed_buf_ != nullptr) {
@@ -79,10 +79,7 @@ struct PageData {
         int ret = common::E_OK;                                                \
         /* std::cout << "page_writer writer: time=" << timestamp << ", value=" \
          * << value << std::endl; */                                           \
-        if (UNLIKELY(data_type_ != TSDATATYPE)) {                              \
-            ret = common::E_TYPE_NOT_MATCH;                                    \
-        } else if (RET_FAIL(                                                   \
-                       time_encoder_->encode(timestamp, time_out_stream_))) {  \
+        if (RET_FAIL(time_encoder_->encode(timestamp, time_out_stream_))) {    \
         } else if (RET_FAIL(                                                   \
                        value_encoder_->encode(value, value_out_stream_))) {    \
         } else {                                                               \
@@ -113,22 +110,44 @@ class PageWriter {
     void destroy();
 
     FORCE_INLINE int write(int64_t timestamp, bool value) {
-        PW_DO_WRITE_FOR_TYPE(common::BOOLEAN);
+        if (UNLIKELY(data_type_ != common::BOOLEAN)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+        PW_DO_WRITE_FOR_TYPE();
     }
     FORCE_INLINE int write(int64_t timestamp, int32_t value) {
-        PW_DO_WRITE_FOR_TYPE(common::INT32);
+        if (UNLIKELY(data_type_ != common::INT32 &&
+                     data_type_ != common::DATE)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+        PW_DO_WRITE_FOR_TYPE();
     }
     FORCE_INLINE int write(int64_t timestamp, int64_t value) {
-        PW_DO_WRITE_FOR_TYPE(common::INT64);
+        if (UNLIKELY(data_type_ != common::INT64 &&
+                     data_type_ != common::TIMESTAMP)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+        PW_DO_WRITE_FOR_TYPE();
     }
     FORCE_INLINE int write(int64_t timestamp, float value) {
-        PW_DO_WRITE_FOR_TYPE(common::FLOAT);
+        if (UNLIKELY(data_type_ != common::FLOAT)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+        PW_DO_WRITE_FOR_TYPE();
     }
     FORCE_INLINE int write(int64_t timestamp, double value) {
-        PW_DO_WRITE_FOR_TYPE(common::DOUBLE);
+        if (UNLIKELY(data_type_ != common::DOUBLE)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+        PW_DO_WRITE_FOR_TYPE();
     }
     FORCE_INLINE int write(int64_t timestamp, common::String value) {
-        PW_DO_WRITE_FOR_TYPE(common::STRING);
+        if (UNLIKELY(data_type_ != common::STRING &&
+                     data_type_ != common::TEXT &&
+                     data_type_ != common::BLOB)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+        PW_DO_WRITE_FOR_TYPE();
     }
 
     FORCE_INLINE uint32_t get_point_numer() const { return statistic_->count_; }
@@ -150,15 +169,15 @@ class PageWriter {
                time_encoder_->get_max_byte_size() +
                value_encoder_->get_max_byte_size();
     }
-    int write_to_chunk(common::ByteStream &pages_data, bool write_header,
+    int write_to_chunk(common::ByteStream& pages_data, bool write_header,
                        bool write_statistic, bool write_data_to_chunk_data);
-    FORCE_INLINE common::ByteStream &get_time_data() {
+    FORCE_INLINE common::ByteStream& get_time_data() {
         return time_out_stream_;
     }
-    FORCE_INLINE common::ByteStream &get_value_data() {
+    FORCE_INLINE common::ByteStream& get_value_data() {
         return value_out_stream_;
     }
-    FORCE_INLINE Statistic *get_statistic() { return statistic_; }
+    FORCE_INLINE Statistic* get_statistic() { return statistic_; }
     PageData get_cur_page_data() { return cur_page_data_; }
     void destroy_page_data() { cur_page_data_.destroy(); }
 
@@ -170,8 +189,8 @@ class PageWriter {
         }
         return ret;
     }
-    int copy_page_data_to(common::ByteStream &my_page_data,
-                          common::ByteStream &pages_data);
+    int copy_page_data_to(common::ByteStream& my_page_data,
+                          common::ByteStream& pages_data);
 
    private:
     // static const uint32_t OUT_STREAM_PAGE_SIZE = 48;
@@ -179,13 +198,13 @@ class PageWriter {
 
    private:
     common::TSDataType data_type_;
-    Encoder *time_encoder_;
-    Encoder *value_encoder_;
-    Statistic *statistic_;
-    common::ByteStream time_out_stream_;
-    common::ByteStream value_out_stream_;
+    Encoder* time_encoder_;
+    Encoder* value_encoder_;
+    Statistic* statistic_;
+    common::ByteStream time_out_stream_{common::MOD_PAGE_WRITER_OUTPUT_STREAM};
+    common::ByteStream value_out_stream_{common::MOD_PAGE_WRITER_OUTPUT_STREAM};
     PageData cur_page_data_;
-    Compressor *compressor_;
+    Compressor* compressor_;
     bool is_inited_;
 };
 

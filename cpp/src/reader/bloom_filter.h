@@ -56,7 +56,7 @@ class BitSet {
         word_count_ = (size - 1) / 64 + 1;
         int32_t alloc_size = word_count_ * sizeof(uint64_t);
         words_ =
-            (uint64_t *)common::mem_alloc(alloc_size, common::MOD_BLOOM_FILTER);
+            (uint64_t*)common::mem_alloc(alloc_size, common::MOD_BLOOM_FILTER);
         if (IS_NULL(words_)) {
             return common::E_OOM;
         }
@@ -72,7 +72,7 @@ class BitSet {
     void set(int32_t pos) {
         int32_t word_idx = pos / 64;
         int32_t word_offset = pos % 64;
-        words_[word_idx] |= (1ul << word_offset);
+        words_[word_idx] |= (1ull << word_offset);
     }
     int32_t get_words_in_use() const {
         for (int32_t i = word_count_ - 1; i >= 0; i--) {
@@ -82,12 +82,12 @@ class BitSet {
         }
         return 0;
     }
-    void to_bytes(uint8_t *&ret_bytes, int32_t &ret_len) const;
-    void revert_bytes(uint8_t *bytes) { common::mem_free(bytes); }
-    int from_bytes(uint8_t *filter_data, uint32_t filter_data_bytes_len);
+    void to_bytes(uint8_t*& ret_bytes, int32_t& ret_len) const;
+    void revert_bytes(uint8_t* bytes) { common::mem_free(bytes); }
+    int from_bytes(uint8_t* filter_data, uint32_t filter_data_bytes_len);
 
    private:
-    uint64_t *words_;
+    uint64_t* words_;
     int32_t word_count_;
 };
 
@@ -105,15 +105,16 @@ class BloomFilter {
     ~BloomFilter() { destroy(); }
     int init(double error_percent, int entry_count);
     void destroy() { bitset_.destroy(); }
-    int add_path_entry(const common::String &device_name,
-                       const common::String &measurement_name);
-    int serialize_to(common::ByteStream &out);
-    int deserialize_from(common::ByteStream &in);
+    int add_path_entry(const common::String& device_name,
+                       const common::String& measurement_name);
+    int serialize_to(common::ByteStream& out);
+    int deserialize_from(common::ByteStream& in);
+    BitSet* get_bit_set() { return &bitset_; }
 
    private:
-    common::String get_entry_string(const common::String &device_name,
-                                    const common::String &measurement_name);
-    FORCE_INLINE void free_entry_buf(char *entry_buf) {
+    common::String get_entry_string(const common::String& device_name,
+                                    const common::String& measurement_name);
+    FORCE_INLINE void free_entry_buf(char* entry_buf) {
         common::mem_free(entry_buf);
     }
 

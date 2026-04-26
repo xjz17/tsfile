@@ -81,6 +81,10 @@ public class TimeseriesMetadata implements ITimeSeriesMetadata {
   // modified is true when there are modifications of the series, or from unseq file
   private boolean modified;
 
+  // data type modified
+  // Unlike the 'modified' property, this property should be passed down to a lower level.
+  private boolean dataTypeModifiedAndCannotUseStatistics;
+
   private IChunkMetadataLoader chunkMetadataLoader;
 
   // used for SeriesReader to indicate whether it is a seq/unseq timeseries metadata
@@ -121,6 +125,13 @@ public class TimeseriesMetadata implements ITimeSeriesMetadata {
   }
 
   public static TimeseriesMetadata deserializeFrom(ByteBuffer buffer, boolean needChunkMetadata) {
+    return deserializeFrom(buffer, needChunkMetadata, needChunkMetadata);
+  }
+
+  public static TimeseriesMetadata deserializeFrom(
+      ByteBuffer buffer,
+      boolean needChunkMetadataForDataTypeWithValuesInStatistics,
+      boolean needChunkMetadataForDataTypeWithoutValuesInStatistics) {
     TimeseriesMetadata timeseriesMetaData = new TimeseriesMetadata();
     timeseriesMetaData.setTimeSeriesMetadataType(ReadWriteIOUtils.readByte(buffer));
     timeseriesMetaData.setMeasurementId(ReadWriteIOUtils.readVarIntString(buffer));
@@ -128,7 +139,10 @@ public class TimeseriesMetadata implements ITimeSeriesMetadata {
     int chunkMetaDataListDataSize = ReadWriteForEncodingUtils.readUnsignedVarInt(buffer);
     timeseriesMetaData.setDataSizeOfChunkMetaDataList(chunkMetaDataListDataSize);
     timeseriesMetaData.setStatistics(Statistics.deserialize(buffer, timeseriesMetaData.dataType));
-    if (needChunkMetadata) {
+    if ((!timeseriesMetaData.getTsDataType().hasNoValueInStatistics()
+            && needChunkMetadataForDataTypeWithValuesInStatistics)
+        || (timeseriesMetaData.getTsDataType().hasNoValueInStatistics()
+            && needChunkMetadataForDataTypeWithoutValuesInStatistics)) {
       ByteBuffer byteBuffer = buffer.slice();
       byteBuffer.limit(chunkMetaDataListDataSize);
       timeseriesMetaData.chunkMetadataList = new ArrayList<>();
@@ -145,6 +159,14 @@ public class TimeseriesMetadata implements ITimeSeriesMetadata {
 
   public static TimeseriesMetadata deserializeFrom(
       TsFileInput tsFileInput, boolean needChunkMetadata) throws IOException {
+    return deserializeFrom(tsFileInput, needChunkMetadata, needChunkMetadata);
+  }
+
+  public static TimeseriesMetadata deserializeFrom(
+      TsFileInput tsFileInput,
+      boolean needChunkMetadataForDataTypeWithValuesInStatistics,
+      boolean needChunkMetadataForDataTypeWithoutValuesInStatistics)
+      throws IOException {
     InputStream inputStream = tsFileInput.wrapAsInputStream();
     TimeseriesMetadata timeseriesMetaData = new TimeseriesMetadata();
     timeseriesMetaData.setTimeSeriesMetadataType(ReadWriteIOUtils.readByte(inputStream));
@@ -155,7 +177,10 @@ public class TimeseriesMetadata implements ITimeSeriesMetadata {
     timeseriesMetaData.setStatistics(
         Statistics.deserialize(inputStream, timeseriesMetaData.dataType));
     long startOffset = tsFileInput.position();
-    if (needChunkMetadata) {
+    if ((!timeseriesMetaData.getTsDataType().hasNoValueInStatistics()
+            && needChunkMetadataForDataTypeWithValuesInStatistics)
+        || (timeseriesMetaData.getTsDataType().hasNoValueInStatistics()
+            && needChunkMetadataForDataTypeWithoutValuesInStatistics)) {
       timeseriesMetaData.chunkMetadataList = new ArrayList<>();
       while (tsFileInput.position() < startOffset + chunkMetaDataListDataSize) {
         timeseriesMetaData.chunkMetadataList.add(
@@ -175,6 +200,14 @@ public class TimeseriesMetadata implements ITimeSeriesMetadata {
    */
   public static TimeseriesMetadata deserializeFrom(
       ByteBuffer buffer, Set<String> excludedMeasurements, boolean needChunkMetadata) {
+    return deserializeFrom(buffer, excludedMeasurements, needChunkMetadata, needChunkMetadata);
+  }
+
+  public static TimeseriesMetadata deserializeFrom(
+      ByteBuffer buffer,
+      Set<String> excludedMeasurements,
+      boolean needChunkMetadataForDataTypeWithValuesInStatistics,
+      boolean needChunkMetadataForDataTypeWithoutValuesInStatistics) {
     byte timeseriesType = ReadWriteIOUtils.readByte(buffer);
     String measurementID = ReadWriteIOUtils.readVarIntString(buffer);
     TSDataType tsDataType = ReadWriteIOUtils.readDataType(buffer);
@@ -188,7 +221,11 @@ public class TimeseriesMetadata implements ITimeSeriesMetadata {
     timeseriesMetaData.setDataSizeOfChunkMetaDataList(chunkMetaDataListDataSize);
     timeseriesMetaData.setStatistics(statistics);
 
-    if (!excludedMeasurements.contains(measurementID) && needChunkMetadata) {
+    if (!excludedMeasurements.contains(measurementID)
+        && ((!tsDataType.hasNoValueInStatistics()
+                && needChunkMetadataForDataTypeWithValuesInStatistics)
+            || (tsDataType.hasNoValueInStatistics()
+                && needChunkMetadataForDataTypeWithoutValuesInStatistics))) {
       // measurement is not in the excluded set and need chunk metadata
       ByteBuffer byteBuffer = buffer.slice();
       byteBuffer.limit(chunkMetaDataListDataSize);
@@ -295,7 +332,7 @@ public class TimeseriesMetadata implements ITimeSeriesMetadata {
   }
 
   public boolean typeMatch(TSDataType dataType) {
-    return this.dataType == dataType;
+    return dataType.isCompatible(getTsDataType());
   }
 
   @Override
@@ -310,19 +347,31 @@ public class TimeseriesMetadata implements ITimeSeriesMetadata {
   public List<IChunkMetadata> getCopiedChunkMetadataList() {
     List<IChunkMetadata> res = new ArrayList<>(chunkMetadataList.size());
     for (IChunkMetadata chunkMetadata : chunkMetadataList) {
-      res.add(new ChunkMetadata((ChunkMetadata) chunkMetadata));
+      ChunkMetadata copiedChunkMetadata = new ChunkMetadata((ChunkMetadata) chunkMetadata);
+      copiedChunkMetadata.setDataTypeModifiedAndCannotUseStatistics(
+          dataTypeModifiedAndCannotUseStatistics);
+      res.add(copiedChunkMetadata);
     }
     return res;
   }
 
   @Override
   public boolean isModified() {
-    return modified;
+    return modified || dataTypeModifiedAndCannotUseStatistics;
   }
 
   @Override
   public void setModified(boolean modified) {
-    this.modified = modified;
+    this.modified |= modified;
+  }
+
+  public boolean isDataTypeModifiedAndCannotUseStatistics() {
+    return dataTypeModifiedAndCannotUseStatistics;
+  }
+
+  public void setDataTypeModifiedAndCannotUseStatistics(
+      boolean dataTypeModifiedAndCannotUseStatistics) {
+    this.dataTypeModifiedAndCannotUseStatistics |= dataTypeModifiedAndCannotUseStatistics;
   }
 
   @Override

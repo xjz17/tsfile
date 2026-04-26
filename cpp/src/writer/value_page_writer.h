@@ -35,9 +35,9 @@ struct ValuePageData {
     uint32_t value_buf_size_;
     uint32_t uncompressed_size_;
     uint32_t compressed_size_;
-    char *uncompressed_buf_;
-    char *compressed_buf_;
-    Compressor *compressor_;
+    char* uncompressed_buf_;
+    char* compressed_buf_;
+    Compressor* compressor_;
 
     ValuePageData()
         : col_notnull_bitmap_buf_size_(0),
@@ -47,11 +47,10 @@ struct ValuePageData {
           uncompressed_buf_(nullptr),
           compressed_buf_(nullptr),
           compressor_(nullptr) {}
-    int init(common::ByteStream &col_notnull_bitmap_bs,
-             common::ByteStream &value_bs, Compressor *compressor,
+    int init(common::ByteStream& col_notnull_bitmap_bs,
+             common::ByteStream& value_bs, Compressor* compressor,
              uint32_t size);
     void destroy() {
-        // Be careful about the memory
         if (uncompressed_buf_ != nullptr) {
             common::mem_free(uncompressed_buf_);
             uncompressed_buf_ = nullptr;
@@ -60,16 +59,25 @@ struct ValuePageData {
             compressor_->after_compress(compressed_buf_);
             compressed_buf_ = nullptr;
         }
+        compressor_ = nullptr;
+    }
+
+    /** Clear pointers without freeing (transfer ownership to another holder).
+     */
+    void clear() {
+        col_notnull_bitmap_buf_size_ = 0;
+        value_buf_size_ = 0;
+        uncompressed_size_ = 0;
+        compressed_size_ = 0;
+        uncompressed_buf_ = nullptr;
+        compressed_buf_ = nullptr;
+        compressor_ = nullptr;
     }
 };
 
-#define VPW_DO_WRITE_FOR_TYPE(TSDATATYPE, ISNULL)                         \
+#define VPW_DO_WRITE_FOR_TYPE(ISNULL)                                     \
     {                                                                     \
         int ret = common::E_OK;                                           \
-        if (UNLIKELY(data_type_ != TSDATATYPE)) {                         \
-            ret = common::E_TYPE_NOT_MATCH;                               \
-            return ret;                                                   \
-        }                                                                 \
         if ((size_ / 8) + 1 > col_notnull_bitmap_.size()) {               \
             col_notnull_bitmap_.push_back(0);                             \
         }                                                                 \
@@ -109,22 +117,54 @@ class ValuePageWriter {
     void destroy();
 
     FORCE_INLINE int write(int64_t timestamp, bool value, bool isnull) {
-        VPW_DO_WRITE_FOR_TYPE(common::BOOLEAN, isnull);
+        if (UNLIKELY(data_type_ != common::BOOLEAN)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+        VPW_DO_WRITE_FOR_TYPE(isnull);
     }
+
     FORCE_INLINE int write(int64_t timestamp, int32_t value, bool isnull) {
-        VPW_DO_WRITE_FOR_TYPE(common::INT32, isnull);
+        if (UNLIKELY(data_type_ != common::INT32 &&
+                     data_type_ != common::DATE)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+        VPW_DO_WRITE_FOR_TYPE(isnull);
     }
+
     FORCE_INLINE int write(int64_t timestamp, int64_t value, bool isnull) {
-        VPW_DO_WRITE_FOR_TYPE(common::INT64, isnull);
+        if (UNLIKELY(data_type_ != common::INT64 &&
+                     data_type_ != common::TIMESTAMP)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+        VPW_DO_WRITE_FOR_TYPE(isnull);
     }
+
     FORCE_INLINE int write(int64_t timestamp, float value, bool isnull) {
-        VPW_DO_WRITE_FOR_TYPE(common::FLOAT, isnull);
+        if (UNLIKELY(data_type_ != common::FLOAT)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+        VPW_DO_WRITE_FOR_TYPE(isnull);
     }
+
     FORCE_INLINE int write(int64_t timestamp, double value, bool isnull) {
-        VPW_DO_WRITE_FOR_TYPE(common::DOUBLE, isnull);
+        if (UNLIKELY(data_type_ != common::DOUBLE)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+        VPW_DO_WRITE_FOR_TYPE(isnull);
+    }
+
+    FORCE_INLINE int write(int64_t timestamp, common::String value,
+                           bool isnull) {
+        if (UNLIKELY(data_type_ != common::STRING &&
+                     data_type_ != common::TEXT &&
+                     data_type_ != common::BLOB)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+        VPW_DO_WRITE_FOR_TYPE(isnull);
     }
 
     FORCE_INLINE uint32_t get_point_numer() const { return statistic_->count_; }
+    FORCE_INLINE uint32_t get_total_write_count() const { return size_; }
     FORCE_INLINE uint32_t get_col_notnull_bitmap_out_stream_size() const {
         return col_notnull_bitmap_out_stream_.total_size();
     }
@@ -145,17 +185,19 @@ class ValuePageWriter {
                value_out_stream_.total_size() +
                value_encoder_->get_max_byte_size();
     }
-    int write_to_chunk(common::ByteStream &pages_data, bool write_header,
+    int write_to_chunk(common::ByteStream& pages_data, bool write_header,
                        bool write_statistic, bool write_data_to_chunk_data);
-    FORCE_INLINE common::ByteStream &get_col_notnull_bitmap_data() {
+    FORCE_INLINE common::ByteStream& get_col_notnull_bitmap_data() {
         return col_notnull_bitmap_out_stream_;
     }
-    FORCE_INLINE common::ByteStream &get_value_data() {
+    FORCE_INLINE common::ByteStream& get_value_data() {
         return value_out_stream_;
     }
-    FORCE_INLINE Statistic *get_statistic() { return statistic_; }
+    FORCE_INLINE Statistic* get_statistic() { return statistic_; }
     ValuePageData get_cur_page_data() { return cur_page_data_; }
     void destroy_page_data() { cur_page_data_.destroy(); }
+    /** Clear cur_page_data_ without freeing (after ownership transferred). */
+    void clear_page_data() { cur_page_data_.clear(); }
 
    private:
     FORCE_INLINE int prepare_end_page() {
@@ -168,20 +210,21 @@ class ValuePageWriter {
         }
         return ret;
     }
-    int copy_page_data_to(common::ByteStream &my_page_data,
-                          common::ByteStream &pages_data);
+    int copy_page_data_to(common::ByteStream& my_page_data,
+                          common::ByteStream& pages_data);
 
    private:
     static const uint32_t OUT_STREAM_PAGE_SIZE = 1024;
 
    private:
     common::TSDataType data_type_;
-    Encoder *value_encoder_;
-    Statistic *statistic_;
-    common::ByteStream col_notnull_bitmap_out_stream_;
-    common::ByteStream value_out_stream_;
+    Encoder* value_encoder_;
+    Statistic* statistic_;
+    common::ByteStream col_notnull_bitmap_out_stream_{
+        common::MOD_PAGE_WRITER_OUTPUT_STREAM};
+    common::ByteStream value_out_stream_{common::MOD_PAGE_WRITER_OUTPUT_STREAM};
     ValuePageData cur_page_data_;
-    Compressor *compressor_;
+    Compressor* compressor_;
     bool is_inited_;
     std::vector<uint8_t> col_notnull_bitmap_;
     uint32_t size_;

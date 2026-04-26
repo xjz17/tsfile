@@ -70,7 +70,7 @@ double math_log(double in) {
 #endif
 
 /* ================ BitSet ================ */
-void BitSet::to_bytes(uint8_t *&ret_bytes, int32_t &ret_len) const {
+void BitSet::to_bytes(uint8_t*& ret_bytes, int32_t& ret_len) const {
     int32_t words_in_use = get_words_in_use();
     if (words_in_use == 0) {
         return;
@@ -83,8 +83,7 @@ void BitSet::to_bytes(uint8_t *&ret_bytes, int32_t &ret_len) const {
         x = x >> 8;
     }
 
-    uint8_t *res =
-        (uint8_t *)mem_alloc(sizeof(uint8_t) * len, MOD_BLOOM_FILTER);
+    uint8_t* res = (uint8_t*)mem_alloc(sizeof(uint8_t) * len, MOD_BLOOM_FILTER);
     int32_t res_pos = 0;
     for (int32_t w = 0; w < words_in_use - 1; w++) {
         uint64_t word = words_[w];
@@ -106,13 +105,13 @@ void BitSet::to_bytes(uint8_t *&ret_bytes, int32_t &ret_len) const {
 }
 
 // TODO byte-wise unittest
-int BitSet::from_bytes(uint8_t *filter_data, uint32_t filter_data_bytes_len) {
+int BitSet::from_bytes(uint8_t* filter_data, uint32_t filter_data_bytes_len) {
     int ret = E_OK;
 
     word_count_ =
         (filter_data_bytes_len / 8) + (filter_data_bytes_len % 8 == 0 ? 0 : 1);
     words_ =
-        (uint64_t *)mem_alloc(word_count_ * sizeof(uint64_t), MOD_BLOOM_FILTER);
+        (uint64_t*)mem_alloc(word_count_ * sizeof(uint64_t), MOD_BLOOM_FILTER);
     if (IS_NULL(words_)) {
         return E_OOM;
     }
@@ -120,34 +119,23 @@ int BitSet::from_bytes(uint8_t *filter_data, uint32_t filter_data_bytes_len) {
     uint32_t word_idx = 0;
     for (; word_idx < (filter_data_bytes_len / 8); word_idx += 1) {
         uint64_t cur_word = 0;
-        uint8_t *cur_word_start_byte = filter_data + (word_idx * 8);
-        cur_word |= *(cur_word_start_byte + 0);
-        cur_word = cur_word << 8;
-        cur_word |= *(cur_word_start_byte + 1);
-        cur_word = cur_word << 8;
-        cur_word |= *(cur_word_start_byte + 2);
-        cur_word = cur_word << 8;
-        cur_word |= *(cur_word_start_byte + 3);
-        cur_word = cur_word << 8;
-        cur_word |= *(cur_word_start_byte + 4);
-        cur_word = cur_word << 8;
-        cur_word |= *(cur_word_start_byte + 5);
-        cur_word = cur_word << 8;
-        cur_word |= *(cur_word_start_byte + 6);
-        cur_word = cur_word << 8;
-        cur_word |= *(cur_word_start_byte + 7);
-        cur_word = cur_word << 8;
-        *(words_ + word_idx) = cur_word;
+        uint8_t* cur_word_start_byte = filter_data + (word_idx * 8);
+        for (int b = 0; b < 8; ++b) {
+            cur_word |= static_cast<uint64_t>(cur_word_start_byte[b])
+                        << (8 * b);
+        }
+        words_[word_idx] = cur_word;
     }
 
     if (filter_data_bytes_len > word_idx * 8) {
         uint64_t cur_word = 0;
-        uint8_t *cur_word_start_byte = filter_data + (word_idx * 8);
-        for (uint32_t r = 0; r < filter_data_bytes_len - word_idx * 8; r++) {
-            cur_word |= *(cur_word_start_byte + r);
-            cur_word = cur_word << 8;
+        uint8_t* cur_word_start_byte = filter_data + (word_idx * 8);
+        int remain = filter_data_bytes_len - word_idx * 8;
+        for (int b = 0; b < remain; ++b) {
+            cur_word |= static_cast<uint64_t>(cur_word_start_byte[b])
+                        << (8 * b);
         }
-        *(words_ + word_idx) = cur_word;
+        words_[word_idx] = cur_word;
     }
     return ret;
 }
@@ -180,26 +168,28 @@ int BloomFilter::init(double error_percent, int entry_count) {
     return ret;
 }
 
-String BloomFilter::get_entry_string(const String &device_name,
-                                     const String &measurement_name) {
+String BloomFilter::get_entry_string(const String& device_name,
+                                     const String& measurement_name) {
     String ret_str;
     int len = device_name.len_ + measurement_name.len_ + 2;  // '.' and '\0'
-    char *path_buf = (char *)mem_alloc(len, MOD_BLOOM_FILTER);
+    char* path_buf = (char*)mem_alloc(len, MOD_BLOOM_FILTER);
     if (IS_NULL(path_buf)) {
         return ret_str;
     }
     memcpy(path_buf, device_name.buf_, device_name.len_);
     *(path_buf + device_name.len_) = '.';
-    memcpy(path_buf + device_name.len_ + 1, measurement_name.buf_,
-           measurement_name.len_);
+    if (measurement_name.buf_) {
+        memcpy(path_buf + device_name.len_ + 1, measurement_name.buf_,
+               measurement_name.len_);
+    }
     *(path_buf + device_name.len_ + measurement_name.len_ + 1) = '\0';
     ret_str.buf_ = path_buf;
     ret_str.len_ = len;
     return ret_str;
 }
 
-int BloomFilter::add_path_entry(const String &device_name,
-                                const String &measurement_name) {
+int BloomFilter::add_path_entry(const String& device_name,
+                                const String& measurement_name) {
     if (device_name.is_null()) {
         return E_INVALID_ARG;
     }
@@ -210,7 +200,7 @@ int BloomFilter::add_path_entry(const String &device_name,
     }
 
     for (uint32_t i = 0; i < hash_func_count_; i++) {
-        HashFunction &hf = hash_func_arr_[i];
+        HashFunction& hf = hash_func_arr_[i];
         int32_t hv = hf.hash(entry);
         bitset_.set(hv);
     }
@@ -218,9 +208,9 @@ int BloomFilter::add_path_entry(const String &device_name,
     return E_OK;
 }
 
-int BloomFilter::serialize_to(ByteStream &out) {
+int BloomFilter::serialize_to(ByteStream& out) {
     int ret = E_OK;
-    uint8_t *filter_data_bytes = nullptr;
+    uint8_t* filter_data_bytes = nullptr;
     int32_t filter_data_bytes_len = 0;
     bitset_.to_bytes(filter_data_bytes, filter_data_bytes_len);
     if (RET_FAIL(
@@ -237,14 +227,14 @@ int BloomFilter::serialize_to(ByteStream &out) {
     return ret;
 }
 
-int BloomFilter::deserialize_from(ByteStream &in) {
+int BloomFilter::deserialize_from(ByteStream& in) {
     int ret = E_OK;
     uint32_t filter_data_bytes_len = 0;
     uint32_t ret_read_len = 0;
-    uint8_t *filter_data = nullptr;
+    uint8_t* filter_data = nullptr;
     if (RET_FAIL(SerializationUtil::read_var_uint(filter_data_bytes_len, in))) {
     } else if (UNLIKELY(nullptr ==
-                        (filter_data = (uint8_t *)mem_alloc(
+                        (filter_data = (uint8_t*)mem_alloc(
                              filter_data_bytes_len, MOD_BLOOM_FILTER)))) {
         ret = E_OOM;
     } else if (RET_FAIL(in.read_buf(filter_data, filter_data_bytes_len,

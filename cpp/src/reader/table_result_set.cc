@@ -37,7 +37,12 @@ void TableResultSet::init() {
 TableResultSet::~TableResultSet() { close(); }
 
 int TableResultSet::next(bool& has_next) {
+    if (return_mode_ != RETURN_ROW) {
+        return tsblock_reader_->has_next(has_next);
+    }
+
     int ret = common::E_OK;
+
     while (row_iterator_ == nullptr || !row_iterator_->has_next()) {
         if (RET_FAIL(tsblock_reader_->has_next(has_next))) {
             return ret;
@@ -70,17 +75,20 @@ int TableResultSet::next(bool& has_next) {
         bool null = false;
         row_record_->reset();
         for (uint32_t i = 0; i < row_iterator_->get_column_count(); ++i) {
-            row_record_->get_field(i)->set_value(
-                row_iterator_->get_data_type(i),
-                row_iterator_->read(i, &len, &null), pa_);
+            const auto value = row_iterator_->read(i, &len, &null);
+            if (!null) {
+                row_record_->get_field(i)->set_value(
+                    row_iterator_->get_data_type(i), value, len, pa_);
+                row_iterator_->next(i);
+            }
         }
-        row_iterator_->next();
+        row_iterator_->update_row_id();
     }
     return ret;
 }
 
 bool TableResultSet::is_null(const std::string& column_name) {
-    auto iter = index_lookup_.find(to_lower(column_name));
+    auto iter = index_lookup_.find(column_name);
     if (iter == index_lookup_.end()) {
         return true;
     } else {
@@ -98,6 +106,35 @@ RowRecord* TableResultSet::get_row_record() { return row_record_; }
 
 std::shared_ptr<ResultSetMetadata> TableResultSet::get_metadata() {
     return result_set_metadata_;
+}
+
+int TableResultSet::get_next_tsblock(common::TsBlock*& block) {
+    int ret = common::E_OK;
+    block = nullptr;
+
+    if (return_mode_ == RETURN_ROW) {
+        return common::E_INVALID_ARG;
+    }
+
+    bool has_next = false;
+    if (RET_FAIL(tsblock_reader_->has_next(has_next))) {
+        return ret;
+    }
+
+    if (!has_next) {
+        return common::E_NO_MORE_DATA;
+    }
+
+    if (RET_FAIL(tsblock_reader_->next(tsblock_))) {
+        return ret;
+    }
+
+    if (tsblock_ == nullptr) {
+        return common::E_NO_MORE_DATA;
+    }
+
+    block = tsblock_;
+    return common::E_OK;
 }
 
 void TableResultSet::close() {

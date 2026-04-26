@@ -21,17 +21,37 @@
 
 namespace storage {
 
-int DeviceOrderedTsBlockReader::has_next(bool &has_next) {
+int DeviceOrderedTsBlockReader::has_next(bool& has_next) {
     int ret = common::E_OK;
-    if (current_reader_ != nullptr && IS_SUCC(current_reader_->has_next(has_next)) && has_next) {
+
+    if (remaining_limit_ == 0) {
+        has_next = false;
+        return common::E_OK;
+    }
+
+    if (current_reader_ != nullptr &&
+        IS_SUCC(current_reader_->has_next(has_next)) && has_next) {
         return common::E_OK;
     }
     if (current_reader_ != nullptr) {
+        remaining_offset_ = current_reader_->get_remaining_offset();
+        remaining_limit_ = current_reader_->get_remaining_limit();
         delete current_reader_;
         current_reader_ = nullptr;
     }
-    while (device_task_iterator_->has_next()) {
-        DeviceQueryTask *task = nullptr;
+    if (remaining_limit_ == 0) {
+        has_next = false;
+        return common::E_OK;
+    }
+    while (true) {
+        if (remaining_limit_ == 0) {
+            has_next = false;
+            return common::E_OK;
+        }
+        if (!device_task_iterator_->has_next()) {
+            break;
+        }
+        DeviceQueryTask* task = nullptr;
         if (IS_FAIL(device_task_iterator_->next(task))) {
             return ret;
         }
@@ -40,22 +60,28 @@ int DeviceOrderedTsBlockReader::has_next(bool &has_next) {
             current_reader_ = nullptr;
         }
         current_reader_ = new SingleDeviceTsBlockReader(
-            task, block_size_, metadata_querier_, tsfile_io_reader_, time_filter_,
-            field_filter_);
+            task, block_size_, metadata_querier_, tsfile_io_reader_,
+            time_filter_, field_filter_);
         if (current_reader_ == nullptr) {
             return common::E_OOM;
+        }
+        if (RET_FAIL(current_reader_->init(task, block_size_, time_filter_,
+                                           field_filter_, remaining_offset_,
+                                           remaining_limit_))) {
+            delete current_reader_;
+            current_reader_ = nullptr;
+            return ret;
         }
 
         if (RET_FAIL(current_reader_->has_next(has_next))) {
             return ret;
         }
-        // If current device has data, just return.
         if (has_next) {
             return ret;
         }
-        // If current device does not have data, get next device.
 
-        // Free current device reader.
+        remaining_offset_ = current_reader_->get_remaining_offset();
+        remaining_limit_ = current_reader_->get_remaining_limit();
         if (current_reader_) {
             delete current_reader_;
             current_reader_ = nullptr;
@@ -65,7 +91,7 @@ int DeviceOrderedTsBlockReader::has_next(bool &has_next) {
     return ret;
 }
 
-int DeviceOrderedTsBlockReader::next(common::TsBlock *&ret_block) {
+int DeviceOrderedTsBlockReader::next(common::TsBlock*& ret_block) {
     int ret = common::E_OK;
     bool next = false;
     if (RET_FAIL(has_next(next)) || !next) {
@@ -78,6 +104,9 @@ void DeviceOrderedTsBlockReader::close() {
     if (current_reader_) {
         delete current_reader_;
         current_reader_ = nullptr;
+    }
+    if (device_task_iterator_) {
+        device_task_iterator_->flush_remaining_device_meta_cache();
     }
     if (time_filter_ != nullptr) {
         delete time_filter_;

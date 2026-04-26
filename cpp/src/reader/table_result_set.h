@@ -24,34 +24,40 @@
 #include "reader/result_set.h"
 
 namespace storage {
+
+enum ReturnMode { RETURN_ROW = 0, RETURN_BATCH = 1 };
+
 class TableResultSet : public ResultSet {
    public:
     explicit TableResultSet(std::unique_ptr<TsBlockReader> tsblock_reader,
                             std::vector<std::string> column_names,
-                            std::vector<common::TSDataType> data_types)
+                            std::vector<common::TSDataType> data_types,
+                            int return_mode = RETURN_ROW)
         : tsblock_reader_(std::move(tsblock_reader)),
           column_names_(column_names),
-          data_types_(data_types) {
+          data_types_(data_types),
+          return_mode_(return_mode) {
         init();
     }
-    ~TableResultSet();
+    ~TableResultSet() override;
     int next(bool& has_next) override;
     bool is_null(const std::string& column_name) override;
     bool is_null(uint32_t column_index) override;
     RowRecord* get_row_record() override;
     std::shared_ptr<ResultSetMetadata> get_metadata() override;
     void close() override;
+    int get_next_tsblock(common::TsBlock*& block) override;
 
    private:
     void init();
     std::unique_ptr<TsBlockReader> tsblock_reader_;
     common::RowIterator* row_iterator_ = nullptr;
     common::TsBlock* tsblock_ = nullptr;
-    RowRecord* row_record_ = nullptr;
     std::shared_ptr<ResultSetMetadata> result_set_metadata_;
     std::vector<std::unique_ptr<TsBlockReader>> tsblock_readers_;
     std::vector<std::string> column_names_;
     std::vector<common::TSDataType> data_types_;
+    const int return_mode_;
 };
 }  // namespace storage
 #endif  // TABLE_RESULT_SET_H

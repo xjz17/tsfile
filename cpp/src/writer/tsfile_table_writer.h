@@ -22,6 +22,7 @@
 #include "writer/tsfile_writer.h"
 
 namespace storage {
+class RestorableTsFileIOWriter;
 
 /**
  * @brief Facilitates writing structured table data into a TsFile with a
@@ -61,10 +62,23 @@ class TsFileTableWriter {
         // Perform a deep copy. The source TableSchema object may be
         // stack/heap-allocated.
         auto table_schema_ptr = std::make_shared<TableSchema>(*table_schema);
-        tsfile_writer_->register_table(table_schema_ptr);
+        error_number = tsfile_writer_->register_table(table_schema_ptr);
         exclusive_table_name_ = table_schema->get_table_name();
         common::g_config_value_.chunk_group_size_threshold_ = memory_threshold;
     }
+
+    /**
+     * Constructs a TsFileTableWriter from a RestorableTsFileIOWriter so that
+     * table data can be appended after recovery. Schema is taken from the
+     * restored file; do not pass a TableSchema.
+     *
+     * @param restorable_writer Restored I/O writer; must not be null and must
+     * have been opened with truncate so that can_write() is true.
+     * @param memory_threshold Optional memory threshold for buffered data.
+     */
+    explicit TsFileTableWriter(
+        storage::RestorableTsFileIOWriter* restorable_writer,
+        uint64_t memory_threshold = 128 * 1024 * 1024);
 
     ~TsFileTableWriter();
     /**
@@ -106,6 +120,10 @@ class TsFileTableWriter {
     // if this TsFile only contains one table, this will be its name, otherwise,
     // it will be an empty string
     std::string exclusive_table_name_;
+
+    // Some errors may not be conveyed during the construction phase, so it's
+    // necessary to maintain an internal error code.
+    int error_number = common::E_OK;
 };
 
 }  // namespace storage

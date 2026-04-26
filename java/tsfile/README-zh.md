@@ -21,27 +21,24 @@
 
 [English](./README.md) | [中文](./README-zh.md)
 # TsFile Java Document
-<pre>
-___________    ___________.__.__          
-\__    ___/____\_   _____/|__|  |   ____  
-  |    | /  ___/|    __)  |  |  | _/ __ \ 
-  |    | \___ \ |     \   |  |  |_\  ___/ 
-  |____|/____  >\___  /   |__|____/\___  >  version 2.1.0-SNAPSHOT
-             \/     \/                 \/  
-</pre>
+<p align="center">
+  <img src="https://www.apache.org/logos/originals/tsfile.svg"
+       alt="TsFile Logo"
+       width="400"/>
+</p>
 
 ## 使用
 
 ### 在 Maven 中添加 TsFile 依赖
 
-当前开发版本是 `2.1.0-SNAPSHOT`，可以这样引用
+当前发布版本是 `2.1.0`，可以这样引用
 
 ```xml  
 <dependencies>
     <dependency>
       <groupId>org.apache.tsfile</groupId>
       <artifactId>tsfile</artifactId>
-      <version>2.1.0-SNAPSHOT</version>
+      <version>2.1.0</version>
     </dependency>
 <dependencies>
 ```

@@ -26,12 +26,12 @@ namespace storage {
 template <typename T>
 class GtEq : public UnaryFilter<T> {
    public:
-    GtEq() : UnaryFilter<T>() {};
+    GtEq() : UnaryFilter<T>(){};
     GtEq(T value, FilterType type) : UnaryFilter<T>(value, type) {}
 
     virtual ~GtEq() {}
 
-    bool satisfy(Statistic *statistic) {
+    bool satisfy(Statistic* statistic) {
         if (this->type_ == TIME_FILTER) {
             return this->value_ <= statistic->end_time_;
         } else {

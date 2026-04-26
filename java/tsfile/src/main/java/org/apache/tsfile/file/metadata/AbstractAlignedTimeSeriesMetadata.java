@@ -85,6 +85,18 @@ public abstract class AbstractAlignedTimeSeriesMetadata implements ITimeSeriesMe
   }
 
   @Override
+  public boolean isDataTypeModifiedAndCannotUseStatistics() {
+    return timeseriesMetadata.isDataTypeModifiedAndCannotUseStatistics();
+  }
+
+  @Override
+  public void setDataTypeModifiedAndCannotUseStatistics(
+      boolean dataTypeModifiedAndCannotUseStatistics) {
+    timeseriesMetadata.setDataTypeModifiedAndCannotUseStatistics(
+        dataTypeModifiedAndCannotUseStatistics);
+  }
+
+  @Override
   public boolean isSeq() {
     return timeseriesMetadata.isSeq();
   }
@@ -179,16 +191,13 @@ public abstract class AbstractAlignedTimeSeriesMetadata implements ITimeSeriesMe
       return true;
     }
     if (valueTimeseriesMetadataList != null) {
-      int notMatchCount = 0;
       for (int i = 0, size = dataTypes.size(); i < size; i++) {
         TimeseriesMetadata valueTimeSeriesMetadata = valueTimeseriesMetadataList.get(i);
         if (valueTimeSeriesMetadata != null
             && !valueTimeSeriesMetadata.typeMatch(dataTypes.get(i))) {
           valueTimeseriesMetadataList.set(i, null);
-          notMatchCount++;
         }
       }
-      return notMatchCount != dataTypes.size();
     }
     return true;
   }

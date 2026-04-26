@@ -20,17 +20,21 @@
 #ifndef COMMON_DB_COMMON_H
 #define COMMON_DB_COMMON_H
 
+#include <functional>
 #include <iostream>
+#include <type_traits>
+#include <unordered_set>
 
-#include "utils/util_define.h"
 #include "common/allocator/my_string.h"
+#include "utils/util_define.h"
 
 namespace common {
 
 /**
  * @brief Represents the data type of a measurement.
  *
- * This enumeration defines the supported data types for measurements in the system.
+ * This enumeration defines the supported data types for measurements in the
+ * system.
  */
 enum TSDataType : uint8_t {
     BOOLEAN = 0,
@@ -40,6 +44,10 @@ enum TSDataType : uint8_t {
     DOUBLE = 4,
     TEXT = 5,
     VECTOR = 6,
+    UNKNOWN = 7,
+    TIMESTAMP = 8,
+    DATE = 9,
+    BLOB = 10,
     STRING = 11,
     NULL_TYPE = 254,
     INVALID_DATATYPE = 255
@@ -48,7 +56,8 @@ enum TSDataType : uint8_t {
 /**
  * @brief Represents the encoding method for a measurement.
  *
- * This enumeration defines the supported encoding methods that can be applied to measurements.
+ * This enumeration defines the supported encoding methods that can be applied
+ * to measurements.
  */
 enum TSEncoding : uint8_t {
     PLAIN = 0,
@@ -62,6 +71,7 @@ enum TSEncoding : uint8_t {
     GORILLA = 8,
     ZIGZAG = 9,
     FREQ = 10,
+    SPRINTZ = 12,
     SUBCOLUMN = 14,
     INVALID_ENCODING = 255
 };
@@ -69,7 +79,8 @@ enum TSEncoding : uint8_t {
 /**
  * @brief Represents the compression type for a measurement.
  *
- * This enumeration defines the supported compression methods that can be applied to measurements.
+ * This enumeration defines the supported compression methods that can be
+ * applied to measurements.
  */
 enum CompressionType : uint8_t {
     UNCOMPRESSED = 0,
@@ -86,7 +97,20 @@ enum CompressionType : uint8_t {
 extern const char* s_data_type_names[8];
 extern const char* s_encoding_names[15];
 extern const char* s_compression_names[8];
+}  // namespace common
 
+#if defined(__GLIBCXX__) && (__GNUC__ < 7)
+namespace std {
+template <>
+struct hash<common::TSDataType> {
+    size_t operator()(common::TSDataType v) const noexcept {
+        return static_cast<size_t>(static_cast<uint8_t>(v));
+    }
+};
+}  // namespace std
+#endif
+
+namespace common {
 FORCE_INLINE const char* get_data_type_name(TSDataType type) {
     ASSERT(type >= BOOLEAN && type <= STRING);
     return s_data_type_names[type];
@@ -99,48 +123,6 @@ FORCE_INLINE const char* get_encoding_name(TSEncoding encoding) {
 
 FORCE_INLINE const char* get_compression_name(CompressionType type) {
     return s_compression_names[type];
-}
-
-FORCE_INLINE TSEncoding get_default_encoding_for_type(TSDataType type) {
-    if (type == common::BOOLEAN) {
-        return PLAIN;
-    } else if (type == common::INT32) {
-        return PLAIN;
-    } else if (type == common::INT64) {
-        return PLAIN;
-    } else if (type == common::FLOAT) {
-        return PLAIN;
-    } else if (type == common::DOUBLE) {
-        return PLAIN;
-    } else if (type == common::TEXT) {
-        return PLAIN;
-    } else if (type == common::STRING) {
-        return PLAIN;
-    } else {
-        ASSERT(false);
-    }
-    return INVALID_ENCODING;
-}
-
-FORCE_INLINE CompressionType get_default_compression_for_type(TSDataType type) {
-    if (type == common::BOOLEAN) {
-        return UNCOMPRESSED;
-    } else if (type == common::INT32) {
-        return UNCOMPRESSED;
-    } else if (type == common::INT64) {
-        return UNCOMPRESSED;
-    } else if (type == common::FLOAT) {
-        return UNCOMPRESSED;
-    } else if (type == common::DOUBLE) {
-        return UNCOMPRESSED;
-    } else if (type == common::TEXT) {
-        return UNCOMPRESSED;
-    } else if (type == common::STRING) {
-        return UNCOMPRESSED;
-    } else {
-        ASSERT(false);
-    }
-    return INVALID_COMPRESSION;
 }
 
 enum Ordering { DESC, ASC };
@@ -175,14 +157,51 @@ FORCE_INLINE common::TSDataType GetDataTypeFromTemplateType<common::String>() {
     return common::STRING;
 }
 
+template <typename T>
+FORCE_INLINE bool TypeMatch(common::TSDataType dt) {
+    return dt == common::INVALID_DATATYPE;
+}
+
+template <>
+FORCE_INLINE bool TypeMatch<bool>(common::TSDataType dt) {
+    return dt == common::BOOLEAN;
+}
+
+template <>
+FORCE_INLINE bool TypeMatch<int32_t>(common::TSDataType dt) {
+    return dt == common::INT32 || dt == common::DATE || dt == common::INT64;
+}
+
+template <>
+FORCE_INLINE bool TypeMatch<int64_t>(common::TSDataType dt) {
+    return dt == common::INT64 || dt == common::TIMESTAMP;
+}
+
+template <>
+FORCE_INLINE bool TypeMatch<float>(common::TSDataType dt) {
+    return dt == common::FLOAT || dt == common::DOUBLE;
+}
+
+template <>
+FORCE_INLINE bool TypeMatch<double>(common::TSDataType dt) {
+    return dt == common::DOUBLE;
+}
+
+template <>
+FORCE_INLINE bool TypeMatch<common::String>(common::TSDataType dt) {
+    return dt == common::STRING || dt == common::TEXT || dt == common::BLOB;
+}
+
 FORCE_INLINE size_t get_data_type_size(TSDataType data_type) {
     switch (data_type) {
         case common::BOOLEAN:
             return 1;
+        case common::DATE:
         case common::INT32:
         case common::FLOAT:
             return 4;
         case common::INT64:
+        case common::TIMESTAMP:
         case common::DOUBLE:
             return 8;
         default:
