@@ -41,27 +41,6 @@
 namespace storage {
 namespace fs = std::filesystem;
 
-class ScopedWriteIoTuning {
-   public:
-    ScopedWriteIoTuning(uint32_t page_max_points, uint32_t page_max_memory_bytes)
-        : old_page_max_points_(common::g_config_value_.page_writer_max_point_num_),
-          old_page_max_memory_bytes_(
-              common::g_config_value_.page_writer_max_memory_bytes_) {
-        set_page_max_point_count(page_max_points);
-        common::g_config_value_.page_writer_max_memory_bytes_ = page_max_memory_bytes;
-    }
-
-    ~ScopedWriteIoTuning() {
-        set_page_max_point_count(old_page_max_points_);
-        common::g_config_value_.page_writer_max_memory_bytes_ =
-            old_page_max_memory_bytes_;
-    }
-
-   private:
-    uint32_t old_page_max_points_;
-    uint32_t old_page_max_memory_bytes_;
-};
-
 class CsvReadWriteTest : public ::testing::Test {
    protected:
     static const std::string kParentDir;
@@ -103,6 +82,57 @@ class CsvReadWriteTest : public ::testing::Test {
         int64_t point_count = 0;
         int64_t tsfile_size_bytes = 0;
     };
+
+    struct WriteIoConfig {
+        bool cold_io = true;
+        bool write_o_sync = true;
+        int64_t fsync_chunk_kb = 64;
+    };
+
+    static bool env_bool(const char *name, bool default_value) {
+        const char *raw = std::getenv(name);
+        if (raw == nullptr || *raw == '\0') {
+            return default_value;
+        }
+        std::string s(raw);
+        while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))) {
+            s.erase(s.begin());
+        }
+        while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) {
+            s.pop_back();
+        }
+        if (s == "1" || s == "true" || s == "TRUE" || s == "on" || s == "ON") {
+            return true;
+        }
+        if (s == "0" || s == "false" || s == "FALSE" || s == "off" || s == "OFF") {
+            return false;
+        }
+        return default_value;
+    }
+
+    static int64_t env_int64(const char *name, int64_t default_value) {
+        const char *raw = std::getenv(name);
+        if (raw == nullptr || *raw == '\0') {
+            return default_value;
+        }
+        char *end = nullptr;
+        const long long value = std::strtoll(raw, &end, 10);
+        if (end == raw) {
+            return default_value;
+        }
+        return static_cast<int64_t>(value);
+    }
+
+    static WriteIoConfig load_write_io_config() {
+        WriteIoConfig cfg;
+        cfg.cold_io = env_bool("TSFILE_BENCHMARK_COLD_IO", true);
+        cfg.write_o_sync = env_bool("TSFILE_WRITE_O_SYNC", cfg.cold_io);
+        cfg.fsync_chunk_kb = env_int64("TSFILE_WRITE_FSYNC_CHUNK_KB", cfg.cold_io ? 64 : 0);
+        if (cfg.fsync_chunk_kb < 0) {
+            cfg.fsync_chunk_kb = 0;
+        }
+        return cfg;
+    }
 
     static std::string trim(const std::string &s) {
         size_t start = 0;
@@ -207,6 +237,7 @@ class CsvReadWriteTest : public ::testing::Test {
         common::TSEncoding encoding,
         const std::string &tsfile_path) {
         WriteBenchmarkResult result;
+        const WriteIoConfig io_cfg = load_write_io_config();
         int64_t total_total_ns = 0;
         int64_t total_dataset_read_ns = 0;
         int64_t total_cpu_ns = 0;
@@ -216,6 +247,9 @@ class CsvReadWriteTest : public ::testing::Test {
             std::remove(tsfile_path.c_str());
             TsFileWriter writer;
             const int flags = O_WRONLY | O_CREAT | O_TRUNC
+#ifndef _WIN32
+                              | (io_cfg.write_o_sync ? O_SYNC : 0)
+#endif
 #ifdef _WIN32
                               | O_BINARY
 #endif
@@ -240,6 +274,9 @@ class CsvReadWriteTest : public ::testing::Test {
             int64_t ts = 1;
             int64_t dataset_read_ns = 0;
             int64_t cpu_ns = 0;
+            int64_t io_ns = 0;
+            const int64_t chunk_bytes = io_cfg.fsync_chunk_kb * 1024;
+            int64_t pending_chunk_bytes = 0;
             const auto iter_begin = std::chrono::steady_clock::now();
             std::string line;
             while (std::getline(in, line)) {
@@ -266,6 +303,21 @@ class CsvReadWriteTest : public ::testing::Test {
                 const auto cpu_t1 = std::chrono::steady_clock::now();
                 cpu_ns +=
                     std::chrono::duration_cast<std::chrono::nanoseconds>(cpu_t1 - cpu_t0).count();
+
+                if (chunk_bytes > 0) {
+                    pending_chunk_bytes += static_cast<int64_t>(line.size()) + 1;
+                    if (pending_chunk_bytes >= chunk_bytes) {
+                        const auto io_t0 = std::chrono::steady_clock::now();
+                        if (writer.flush() != common::E_OK) {
+                            ADD_FAILURE() << "Failed to flush tsfile chunk: " << tsfile_path;
+                            return result;
+                        }
+                        const auto io_t1 = std::chrono::steady_clock::now();
+                        io_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(io_t1 - io_t0)
+                                     .count();
+                        pending_chunk_bytes = 0;
+                    }
+                }
             }
 
             const auto io_t0 = std::chrono::steady_clock::now();
@@ -278,7 +330,8 @@ class CsvReadWriteTest : public ::testing::Test {
 
             total_dataset_read_ns += dataset_read_ns;
             total_cpu_ns += cpu_ns;
-            total_io_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(io_t1 - io_t0).count();
+            io_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(io_t1 - io_t0).count();
+            total_io_ns += io_ns;
             total_total_ns +=
                 std::chrono::duration_cast<std::chrono::nanoseconds>(iter_end - iter_begin).count();
         }
@@ -356,7 +409,8 @@ class CsvReadWriteTest : public ::testing::Test {
     }
 };
 
-const std::string CsvReadWriteTest::kParentDir = "D:/github/xjz17/subcolumn/";
+// const std::string CsvReadWriteTest::kParentDir = "D:/github/xjz17/subcolumn/";
+const std::string CsvReadWriteTest::kParentDir = "/home/allen/xjz17/subcolumn/";
 const std::string CsvReadWriteTest::kInputParentDir =
     CsvReadWriteTest::kParentDir + "dataset_tsfile/";
 const std::string CsvReadWriteTest::kOutputParentDir =
@@ -372,10 +426,6 @@ const std::string CsvReadWriteTest::kMeasurementName = "sensor_1";
 
 TEST_F(CsvReadWriteTest, CompareCsvReadWriteEncodings) {
     libtsfile_init();
-    // Tune page flush granularity for benchmark: smaller pages usually increase
-    // flush/close stage work and raise Write IO Time share in total write time.
-    ScopedWriteIoTuning io_tuning(/*page_max_points=*/64,
-                                  /*page_max_memory_bytes=*/4 * 1024);
     ensure_dir(kOutputParentDir);
     ensure_dir(kTsFileOutputDir);
     if (!dir_exists(kInputParentDir)) {
@@ -386,10 +436,11 @@ TEST_F(CsvReadWriteTest, CompareCsvReadWriteEncodings) {
         GTEST_SKIP() << "No dataset csv files found under: " << kInputParentDir;
     }
 
-    const std::array<EncodingConfig, 4> encodings = {{
+    const std::array<EncodingConfig, 5> encodings = {{
         {common::TS_2DIFF, "TS_2DIFF", "ts_2diff"},
         {common::RLE, "RLE", "rle"},
         {common::GORILLA, "GORILLA", "gorilla"},
+        {common::SPRINTZ, "SPRINTZ", "sprintz"},
         {common::SUBCOLUMN, "SUBCOLUMN", "subcolumn"},
     }};
 
