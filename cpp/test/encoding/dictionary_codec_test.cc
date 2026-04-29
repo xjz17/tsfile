@@ -18,6 +18,7 @@
  */
 #include <gtest/gtest.h>
 
+#include <cstdint>
 #include <random>
 #include <string>
 #include <unordered_set>
@@ -167,6 +168,49 @@ TEST_F(DictionaryTest,
     for (const auto& expected_str : test_strings) {
         std::string decoded_str = decoder.read_string(stream);
         ASSERT_EQ(decoded_str, expected_str);
+    }
+}
+
+TEST_F(DictionaryTest, DictionaryEncoderAndDecoderInt32) {
+    DictionaryEncoder encoder;
+    common::ByteStream stream(1024, common::MOD_DICENCODE_OBJ);
+    encoder.init();
+
+    std::vector<int32_t> values = {123, -5, 123, 0, -5, 9999, 0};
+    for (const auto value : values) {
+        ASSERT_EQ(common::E_OK, encoder.encode(value, stream));
+    }
+    encoder.flush(stream);
+
+    DictionaryDecoder decoder;
+    decoder.init();
+
+    for (const auto expected : values) {
+        int32_t actual = 0;
+        ASSERT_EQ(common::E_OK, decoder.read_int32(actual, stream));
+        ASSERT_EQ(expected, actual);
+    }
+}
+
+TEST_F(DictionaryTest, DictionaryEncoderAndDecoderInt64) {
+    DictionaryEncoder encoder;
+    common::ByteStream stream(1024, common::MOD_DICENCODE_OBJ);
+    encoder.init();
+
+    std::vector<int64_t> values = {
+        1234567890123LL, -10LL, 1234567890123LL, 0LL, -10LL, -9876543210LL};
+    for (const auto value : values) {
+        ASSERT_EQ(common::E_OK, encoder.encode(value, stream));
+    }
+    encoder.flush(stream);
+
+    DictionaryDecoder decoder;
+    decoder.init();
+
+    for (const auto expected : values) {
+        int64_t actual = 0;
+        ASSERT_EQ(common::E_OK, decoder.read_int64(actual, stream));
+        ASSERT_EQ(expected, actual);
     }
 }
 

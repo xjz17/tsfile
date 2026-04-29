@@ -32,10 +32,39 @@ namespace storage {
 
 class DictionaryEncoder : public Encoder {
    private:
-    std::map<std::string, int> entry_index_;
-    std::vector<std::string> index_entry_;
+    enum class ValueKind { UNKNOWN, STRING, INT32, INT64 };
+
+    std::map<std::string, int> string_entry_index_;
+    std::vector<std::string> string_index_entry_;
+    std::map<int32_t, int> int32_entry_index_;
+    std::vector<int32_t> int32_index_entry_;
+    std::map<int64_t, int> int64_entry_index_;
+    std::vector<int64_t> int64_index_entry_;
     Int32RleEncoder values_encoder_;
     int map_size_;
+    ValueKind value_kind_;
+
+    static int get_var_int32_size(int32_t value) {
+        uint32_t encoded = static_cast<uint32_t>(value) << 1;
+        if (value < 0) {
+            encoded = ~encoded;
+        }
+
+        int size = 1;
+        while ((encoded & 0xFFFFFF80) != 0) {
+            size++;
+            encoded = encoded >> 7;
+        }
+        return size;
+    }
+
+    bool try_set_value_kind(ValueKind expected_kind) {
+        if (value_kind_ == ValueKind::UNKNOWN) {
+            value_kind_ = expected_kind;
+            return true;
+        }
+        return value_kind_ == expected_kind;
+    }
 
    public:
     DictionaryEncoder() {}
@@ -45,10 +74,30 @@ class DictionaryEncoder : public Encoder {
         return common::E_TYPE_NOT_MATCH;
     }
     int encode(int32_t value, common::ByteStream& out_stream) override {
-        return common::E_TYPE_NOT_MATCH;
+        if (!try_set_value_kind(ValueKind::INT32)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+
+        if (int32_entry_index_.count(value) == 0) {
+            int32_index_entry_.push_back(value);
+            map_size_ += get_var_int32_size(value);
+            int32_entry_index_[value] = int32_entry_index_.size();
+        }
+        values_encoder_.encode(int32_entry_index_[value], out_stream);
+        return common::E_OK;
     }
     int encode(int64_t value, common::ByteStream& out_stream) override {
-        return common::E_TYPE_NOT_MATCH;
+        if (!try_set_value_kind(ValueKind::INT64)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+
+        if (int64_entry_index_.count(value) == 0) {
+            int64_index_entry_.push_back(value);
+            map_size_ += sizeof(int64_t);
+            int64_entry_index_[value] = int64_entry_index_.size();
+        }
+        values_encoder_.encode(int64_entry_index_[value], out_stream);
+        return common::E_OK;
     }
     int encode(float value, common::ByteStream& out_stream) override {
         return common::E_TYPE_NOT_MATCH;
@@ -63,15 +112,21 @@ class DictionaryEncoder : public Encoder {
 
     void init() {
         map_size_ = 0;
+        value_kind_ = ValueKind::UNKNOWN;
         values_encoder_.init();
     }
 
     void destroy() override {}
 
     void reset() override {
-        entry_index_.clear();
-        index_entry_.clear();
+        string_entry_index_.clear();
+        string_index_entry_.clear();
+        int32_entry_index_.clear();
+        int32_index_entry_.clear();
+        int64_entry_index_.clear();
+        int64_index_entry_.clear();
         map_size_ = 0;
+        value_kind_ = ValueKind::UNKNOWN;
         values_encoder_.reset();
     }
 
@@ -80,12 +135,16 @@ class DictionaryEncoder : public Encoder {
     }
 
     int encode(std::string value, common::ByteStream& out) {
-        if (entry_index_.count(value) == 0) {
-            index_entry_.push_back(value);
-            map_size_ = map_size_ + value.length();
-            entry_index_[value] = entry_index_.size();
+        if (!try_set_value_kind(ValueKind::STRING)) {
+            return common::E_TYPE_NOT_MATCH;
         }
-        values_encoder_.encode(entry_index_[value], out);
+
+        if (string_entry_index_.count(value) == 0) {
+            string_index_entry_.push_back(value);
+            map_size_ = map_size_ + value.length();
+            string_entry_index_[value] = string_entry_index_.size();
+        }
+        values_encoder_.encode(string_entry_index_[value], out);
         return common::E_OK;
     }
 
@@ -102,13 +161,42 @@ class DictionaryEncoder : public Encoder {
 
     int write_map(common::ByteStream& out) {
         int ret = common::E_OK;
+        if (value_kind_ == ValueKind::INT32) {
+            if (RET_FAIL(common::SerializationUtil::write_var_int(
+                    (int)int32_index_entry_.size(), out))) {
+                return ret;
+            }
+            for (int i = 0; i < (int)int32_index_entry_.size(); i++) {
+                if (RET_FAIL(common::SerializationUtil::write_var_int(
+                        int32_index_entry_[i], out))) {
+                    return common::E_FILE_WRITE_ERR;
+                }
+            }
+            return common::E_OK;
+        }
+
+        if (value_kind_ == ValueKind::INT64) {
+            if (RET_FAIL(common::SerializationUtil::write_var_int(
+                    (int)int64_index_entry_.size(), out))) {
+                return ret;
+            }
+            for (int i = 0; i < (int)int64_index_entry_.size(); i++) {
+                if (RET_FAIL(
+                        common::SerializationUtil::write_i64(
+                            int64_index_entry_[i], out))) {
+                    return common::E_FILE_WRITE_ERR;
+                }
+            }
+            return common::E_OK;
+        }
+
         if (RET_FAIL(common::SerializationUtil::write_var_int(
-                (int)index_entry_.size(), out))) {
+                (int)string_index_entry_.size(), out))) {
             return ret;
         } else {
-            for (int i = 0; i < (int)index_entry_.size(); i++) {
+            for (int i = 0; i < (int)string_index_entry_.size(); i++) {
                 if (RET_FAIL(common::SerializationUtil::write_var_str(
-                        index_entry_[i], out))) {
+                        string_index_entry_[i], out))) {
                     return common::E_FILE_WRITE_ERR;
                 }
             }

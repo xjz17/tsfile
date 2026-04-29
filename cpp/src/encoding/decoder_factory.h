@@ -70,6 +70,10 @@ class DecoderFactory {
 
             case DICTIONARY:
                 switch (data_type) {
+                    case INT32:
+                    case DATE:
+                    case INT64:
+                    case TIMESTAMP:
                     case STRING:
                     case TEXT:
                         ALLOC_AND_RETURN_DECODER(DictionaryDecoder);
