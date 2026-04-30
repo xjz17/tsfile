@@ -65,7 +65,7 @@ FORCE_INLINE int set_datatype_encoding(uint8_t data_type, uint8_t encoding) {
 
     // Validate input parameters
     ASSERT(dtype >= BOOLEAN && dtype <= STRING);
-    ASSERT(encoding >= PLAIN && encoding <= SPRINTZ);
+    ASSERT(encoding >= PLAIN && encoding <= BITPACKING);
 
     // Check encoding support for each data type
     switch (dtype) {
@@ -80,7 +80,10 @@ FORCE_INLINE int set_datatype_encoding(uint8_t data_type, uint8_t encoding) {
             if (encoding_type != PLAIN && encoding_type != TS_2DIFF &&
                 encoding_type != GORILLA && encoding_type != ZIGZAG &&
                 encoding_type != RLE && encoding_type != SPRINTZ &&
-                encoding_type != DICTIONARY) {
+                encoding_type != DICTIONARY &&
+                encoding_type != SPRINTZ_SUBCOLUMN &&
+                encoding_type != TS_2DIFF_SUBCOLUMN &&
+                encoding_type != BITPACKING) {
                 return E_NOT_SUPPORT;
             }
             dtype == INT32
@@ -92,7 +95,10 @@ FORCE_INLINE int set_datatype_encoding(uint8_t data_type, uint8_t encoding) {
         case DOUBLE:
             if (encoding_type != PLAIN && encoding_type != TS_2DIFF &&
                 encoding_type != GORILLA && encoding_type != SPRINTZ &&
-                encoding_type != DICTIONARY) {
+                encoding_type != DICTIONARY &&
+                encoding_type != SPRINTZ_SUBCOLUMN &&
+                encoding_type != TS_2DIFF_SUBCOLUMN &&
+                encoding_type != BITPACKING) {
                 return E_NOT_SUPPORT;
             }
             dtype == FLOAT

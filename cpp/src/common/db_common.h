@@ -73,6 +73,9 @@ enum TSEncoding : uint8_t {
     FREQ = 10,
     SPRINTZ = 12,
     SUBCOLUMN = 14,
+    SPRINTZ_SUBCOLUMN = 15,
+    TS_2DIFF_SUBCOLUMN = 16,
+    BITPACKING = 17,
     INVALID_ENCODING = 255
 };
 
@@ -95,7 +98,7 @@ enum CompressionType : uint8_t {
 };
 
 extern const char* s_data_type_names[8];
-extern const char* s_encoding_names[15];
+extern const char* s_encoding_names[18];
 extern const char* s_compression_names[8];
 }  // namespace common
 
@@ -117,7 +120,7 @@ FORCE_INLINE const char* get_data_type_name(TSDataType type) {
 }
 
 FORCE_INLINE const char* get_encoding_name(TSEncoding encoding) {
-    ASSERT(encoding >= PLAIN && encoding <= SUBCOLUMN);
+    ASSERT(encoding >= PLAIN && encoding <= BITPACKING);
     return s_encoding_names[encoding];
 }
 

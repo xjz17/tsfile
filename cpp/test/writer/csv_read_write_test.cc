@@ -28,6 +28,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -436,13 +437,16 @@ TEST_F(CsvReadWriteTest, CompareCsvReadWriteEncodings) {
         GTEST_SKIP() << "No dataset csv files found under: " << kInputParentDir;
     }
 
-    const std::array<EncodingConfig, 6> encodings = {{
-        {common::TS_2DIFF, "TS_2DIFF", "ts_2diff"},
-        {common::RLE, "RLE", "rle"},
-        {common::GORILLA, "GORILLA", "gorilla"},
-        {common::SPRINTZ, "SPRINTZ", "sprintz"},
-        {common::DICTIONARY, "DICTIONARY", "dictionary"},
-        {common::SUBCOLUMN, "SUBCOLUMN", "subcolumn"},
+    const std::array<EncodingConfig, 1> encodings = {{
+        // {common::TS_2DIFF, "TS_2DIFF", "ts_2diff"},
+        // {common::RLE, "RLE", "rle"},
+        // {common::GORILLA, "GORILLA", "gorilla"},
+        // {common::SPRINTZ, "SPRINTZ", "sprintz"},
+        // {common::DICTIONARY, "DICTIONARY", "dictionary"},
+        // {common::SUBCOLUMN, "SUBCOLUMN", "subcolumn"},
+        // {common::SPRINTZ_SUBCOLUMN, "SPRINTZ_SUBCOLUMN", "sprintz_subcolumn"},
+        // {common::TS_2DIFF_SUBCOLUMN, "TS_2DIFF_SUBCOLUMN", "ts_2diff_subcolumn"},
+        {common::BITPACKING, "BITPACKING", "bitpacking"},
     }};
 
     std::ofstream write_csv(kWriteResultCsvPath.c_str(), std::ios::out | std::ios::trunc);
@@ -468,13 +472,33 @@ TEST_F(CsvReadWriteTest, CompareCsvReadWriteEncodings) {
         const int bounded_precision =
             std::min(profile.max_decimal_precision, kMaxDecimalPrecision);
         const int64_t multiplier = multiplier_for_precision(bounded_precision);
+        std::cout << "[CsvReadWriteTest] Dataset " << (i + 1) << "/"
+                  << dataset_files.size() << ": " << profile.dataset_name
+                  << ", file=" << profile.file_path
+                  << ", points=" << profile.point_count
+                  << ", max_decimal_precision=" << profile.max_decimal_precision
+                  << ", bounded_precision=" << bounded_precision
+                  << ", multiplier=" << multiplier << std::endl;
 
         for (const auto &cfg : encodings) {
             const std::string tsfile_path = kTsFileOutputDir + profile.dataset_name + "_" +
                                             cfg.file_suffix + "_cpp_v2.tsfile";
+            std::cout << "[CsvReadWriteTest]   Encoding=" << cfg.name
+                      << ", output=" << tsfile_path << std::endl;
             const WriteBenchmarkResult write_result =
                 benchmark_write(profile, multiplier, cfg.encoding, tsfile_path);
+            std::cout << "[CsvReadWriteTest]   Write done: total_ns="
+                      << write_result.total_time_ns
+                      << ", cpu_ns=" << write_result.cpu_time_ns
+                      << ", io_ns=" << write_result.io_time_ns
+                      << ", tsfile_size=" << write_result.tsfile_size_bytes
+                      << std::endl;
             const ReadBenchmarkResult read_result = benchmark_read(tsfile_path);
+            std::cout << "[CsvReadWriteTest]   Read done: total_ns="
+                      << read_result.total_time_ns
+                      << ", cpu_ns=" << read_result.cpu_time_ns
+                      << ", io_ns=" << read_result.io_time_ns
+                      << ", points=" << read_result.point_count << std::endl;
 
             write_csv << profile.dataset_name << "," << cfg.name << ","
                       << write_result.total_time_ns << "," << write_result.dataset_read_time_ns

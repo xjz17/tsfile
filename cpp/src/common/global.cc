@@ -128,7 +128,7 @@ void set_config_value() {}
 const char* s_data_type_names[8] = {"BOOLEAN", "INT32", "INT64",  "FLOAT",
                                     "DOUBLE",  "TEXT",  "VECTOR", "STRING"};
 
-const char* s_encoding_names[15] = {"PLAIN",
+const char* s_encoding_names[18] = {"PLAIN",
                                     "DICTIONARY",
                                     "RLE",
                                     "DIFF",
@@ -142,7 +142,10 @@ const char* s_encoding_names[15] = {"PLAIN",
                                     "SPRINTZ",
                                     "",
                                     "",
-                                    "SUBCOLUMN"};
+                                    "SUBCOLUMN",
+                                    "SPRINTZ_SUBCOLUMN",
+                                    "TS_2DIFF_SUBCOLUMN",
+                                    "BITPACKING"};
 
 const char* s_compression_names[8] = {
     "UNCOMPRESSED", "SNAPPY", "GZIP", "LZO", "SDT", "PAA", "PLA", "LZ4",

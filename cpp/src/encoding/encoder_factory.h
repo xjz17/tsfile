@@ -21,6 +21,7 @@
 #define ENCODING_ENCODER_FACTORY_H
 
 #include "common/global.h"
+#include "encoding/bitpacking_encoder.h"
 #include "dictionary_encoder.h"
 #include "double_sprintz_encoder.h"
 #include "encoder.h"
@@ -31,8 +32,10 @@
 #include "int32_sprintz_encoder.h"
 #include "int64_sprintz_encoder.h"
 #include "plain_encoder.h"
+#include "sprintz_subcolumn_encoder.h"
 #include "subcolumn_encoder.h"
 #include "ts2diff_encoder.h"
+#include "ts2diff_subcolumn_encoder.h"
 #include "zigzag_encoder.h"
 
 namespace storage {
@@ -161,6 +164,51 @@ class EncoderFactory {
                         ALLOC_AND_RETURN_ENCODER(FloatSprintzEncoder);
                     case DOUBLE:
                         ALLOC_AND_RETURN_ENCODER(DoubleSprintzEncoder);
+                    default:
+                        return nullptr;
+                }
+            case SPRINTZ_SUBCOLUMN:
+                switch (data_type) {
+                    case INT32:
+                    case DATE:
+                        ALLOC_AND_RETURN_ENCODER(Int32SprintzSubcolumnEncoder);
+                    case INT64:
+                    case TIMESTAMP:
+                        ALLOC_AND_RETURN_ENCODER(Int64SprintzSubcolumnEncoder);
+                    case FLOAT:
+                        ALLOC_AND_RETURN_ENCODER(FloatSprintzSubcolumnEncoder);
+                    case DOUBLE:
+                        ALLOC_AND_RETURN_ENCODER(DoubleSprintzSubcolumnEncoder);
+                    default:
+                        return nullptr;
+                }
+            case TS_2DIFF_SUBCOLUMN:
+                switch (data_type) {
+                    case INT32:
+                    case DATE:
+                        ALLOC_AND_RETURN_ENCODER(Int32TS2DIFFSubcolumnEncoder);
+                    case INT64:
+                    case TIMESTAMP:
+                        ALLOC_AND_RETURN_ENCODER(Int64TS2DIFFSubcolumnEncoder);
+                    case FLOAT:
+                        ALLOC_AND_RETURN_ENCODER(FloatTS2DIFFSubcolumnEncoder);
+                    case DOUBLE:
+                        ALLOC_AND_RETURN_ENCODER(DoubleTS2DIFFSubcolumnEncoder);
+                    default:
+                        return nullptr;
+                }
+            case BITPACKING:
+                switch (data_type) {
+                    case INT32:
+                    case DATE:
+                        ALLOC_AND_RETURN_ENCODER(Int32BitpackingEncoder);
+                    case INT64:
+                    case TIMESTAMP:
+                        ALLOC_AND_RETURN_ENCODER(Int64BitpackingEncoder);
+                    case FLOAT:
+                        ALLOC_AND_RETURN_ENCODER(FloatBitpackingEncoder);
+                    case DOUBLE:
+                        ALLOC_AND_RETURN_ENCODER(DoubleBitpackingEncoder);
                     default:
                         return nullptr;
                 }
