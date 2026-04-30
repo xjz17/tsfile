@@ -20,7 +20,12 @@
 #ifndef ENCODING_DICTIONARY_ENCODER_H
 #define ENCODING_DICTIONARY_ENCODER_H
 
+#include <algorithm>
+#include <cmath>
+#include <iomanip>
+#include <limits>
 #include <map>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -32,7 +37,7 @@ namespace storage {
 
 class DictionaryEncoder : public Encoder {
    private:
-    enum class ValueKind { UNKNOWN, STRING, INT32, INT64 };
+    enum class ValueKind { UNKNOWN, STRING, INT32, INT64, FLOAT, DOUBLE };
 
     std::map<std::string, int> string_entry_index_;
     std::vector<std::string> string_index_entry_;
@@ -40,9 +45,15 @@ class DictionaryEncoder : public Encoder {
     std::vector<int32_t> int32_index_entry_;
     std::map<int64_t, int> int64_entry_index_;
     std::vector<int64_t> int64_index_entry_;
+    std::map<float, int> float_entry_index_;
+    std::vector<float> float_index_entry_;
+    std::map<double, int> double_entry_index_;
+    std::vector<double> double_index_entry_;
     Int32RleEncoder values_encoder_;
     int map_size_;
     ValueKind value_kind_;
+    int float_scale_;
+    int double_scale_;
 
     static int get_var_int32_size(int32_t value) {
         uint32_t encoded = static_cast<uint32_t>(value) << 1;
@@ -56,6 +67,79 @@ class DictionaryEncoder : public Encoder {
             encoded = encoded >> 7;
         }
         return size;
+    }
+
+    static int get_decimal_places(long double value, int max_decimal_places) {
+        if (!std::isfinite((double)value)) {
+            return 0;
+        }
+
+        std::ostringstream oss;
+        oss << std::fixed << std::setprecision(max_decimal_places)
+            << std::fabsl(value);
+        const std::string value_str = oss.str();
+        const size_t dot_pos = value_str.find('.');
+        if (dot_pos == std::string::npos) {
+            return 0;
+        }
+
+        int end = (int)value_str.size() - 1;
+        while (end > (int)dot_pos && value_str[end] == '0') {
+            end--;
+        }
+        if (end == (int)dot_pos) {
+            return 0;
+        }
+        return end - (int)dot_pos;
+    }
+
+    static bool get_scale_factor(int scale, int64_t& factor) {
+        if (scale < 0) {
+            return false;
+        }
+
+        factor = 1;
+        for (int i = 0; i < scale; i++) {
+            if (factor > std::numeric_limits<int64_t>::max() / 10) {
+                return false;
+            }
+            factor *= 10;
+        }
+        return true;
+    }
+
+    static bool to_scaled_int64(long double value, int scale, int64_t& scaled) {
+        int64_t factor = 1;
+        if (!get_scale_factor(scale, factor)) {
+            return false;
+        }
+
+        const long double scaled_value = value * factor;
+        if (scaled_value > std::numeric_limits<int64_t>::max() ||
+            scaled_value < std::numeric_limits<int64_t>::min()) {
+            return false;
+        }
+        scaled = (int64_t)std::llround(scaled_value);
+        return true;
+    }
+
+    template <typename T>
+    static int resolve_effective_scale(const std::vector<T>& values,
+                                       int requested_scale) {
+        int64_t scaled_value = 0;
+        for (int scale = requested_scale; scale >= 0; --scale) {
+            bool ok = true;
+            for (const auto value : values) {
+                if (!to_scaled_int64((long double)value, scale, scaled_value)) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok) {
+                return scale;
+            }
+        }
+        return 0;
     }
 
     bool try_set_value_kind(ValueKind expected_kind) {
@@ -100,10 +184,34 @@ class DictionaryEncoder : public Encoder {
         return common::E_OK;
     }
     int encode(float value, common::ByteStream& out_stream) override {
-        return common::E_TYPE_NOT_MATCH;
+        if (!try_set_value_kind(ValueKind::FLOAT)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+
+        if (float_entry_index_.count(value) == 0) {
+            float_index_entry_.push_back(value);
+            map_size_ += sizeof(int64_t);
+            float_scale_ =
+                std::max(float_scale_, get_decimal_places(value, 6));
+            float_entry_index_[value] = float_entry_index_.size();
+        }
+        values_encoder_.encode(float_entry_index_[value], out_stream);
+        return common::E_OK;
     }
     int encode(double value, common::ByteStream& out_stream) override {
-        return common::E_TYPE_NOT_MATCH;
+        if (!try_set_value_kind(ValueKind::DOUBLE)) {
+            return common::E_TYPE_NOT_MATCH;
+        }
+
+        if (double_entry_index_.count(value) == 0) {
+            double_index_entry_.push_back(value);
+            map_size_ += sizeof(int64_t);
+            double_scale_ =
+                std::max(double_scale_, get_decimal_places(value, 15));
+            double_entry_index_[value] = double_entry_index_.size();
+        }
+        values_encoder_.encode(double_entry_index_[value], out_stream);
+        return common::E_OK;
     }
     int encode(common::String value, common::ByteStream& out_stream) override {
         encode(value.to_std_string(), out_stream);
@@ -113,6 +221,8 @@ class DictionaryEncoder : public Encoder {
     void init() {
         map_size_ = 0;
         value_kind_ = ValueKind::UNKNOWN;
+        float_scale_ = 0;
+        double_scale_ = 0;
         values_encoder_.init();
     }
 
@@ -125,8 +235,14 @@ class DictionaryEncoder : public Encoder {
         int32_index_entry_.clear();
         int64_entry_index_.clear();
         int64_index_entry_.clear();
+        float_entry_index_.clear();
+        float_index_entry_.clear();
+        double_entry_index_.clear();
+        double_index_entry_.clear();
         map_size_ = 0;
         value_kind_ = ValueKind::UNKNOWN;
+        float_scale_ = 0;
+        double_scale_ = 0;
         values_encoder_.reset();
     }
 
@@ -184,6 +300,56 @@ class DictionaryEncoder : public Encoder {
                 if (RET_FAIL(
                         common::SerializationUtil::write_i64(
                             int64_index_entry_[i], out))) {
+                    return common::E_FILE_WRITE_ERR;
+                }
+            }
+            return common::E_OK;
+        }
+
+        if (value_kind_ == ValueKind::FLOAT) {
+            const int effective_scale =
+                resolve_effective_scale(float_index_entry_, float_scale_);
+            if (RET_FAIL(common::SerializationUtil::write_var_int(
+                    (int)float_index_entry_.size(), out))) {
+                return ret;
+            }
+            if (RET_FAIL(common::SerializationUtil::write_var_int(
+                    effective_scale, out))) {
+                return common::E_FILE_WRITE_ERR;
+            }
+            for (int i = 0; i < (int)float_index_entry_.size(); i++) {
+                int64_t scaled_value = 0;
+                if (!to_scaled_int64(float_index_entry_[i], effective_scale,
+                                     scaled_value)) {
+                    return common::E_OVERFLOW;
+                }
+                if (RET_FAIL(common::SerializationUtil::write_i64(scaled_value,
+                                                                  out))) {
+                    return common::E_FILE_WRITE_ERR;
+                }
+            }
+            return common::E_OK;
+        }
+
+        if (value_kind_ == ValueKind::DOUBLE) {
+            const int effective_scale =
+                resolve_effective_scale(double_index_entry_, double_scale_);
+            if (RET_FAIL(common::SerializationUtil::write_var_int(
+                    (int)double_index_entry_.size(), out))) {
+                return ret;
+            }
+            if (RET_FAIL(common::SerializationUtil::write_var_int(
+                    effective_scale, out))) {
+                return common::E_FILE_WRITE_ERR;
+            }
+            for (int i = 0; i < (int)double_index_entry_.size(); i++) {
+                int64_t scaled_value = 0;
+                if (!to_scaled_int64(double_index_entry_[i], effective_scale,
+                                     scaled_value)) {
+                    return common::E_OVERFLOW;
+                }
+                if (RET_FAIL(common::SerializationUtil::write_i64(scaled_value,
+                                                                  out))) {
                     return common::E_FILE_WRITE_ERR;
                 }
             }

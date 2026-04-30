@@ -436,11 +436,12 @@ TEST_F(CsvReadWriteTest, CompareCsvReadWriteEncodings) {
         GTEST_SKIP() << "No dataset csv files found under: " << kInputParentDir;
     }
 
-    const std::array<EncodingConfig, 5> encodings = {{
+    const std::array<EncodingConfig, 6> encodings = {{
         {common::TS_2DIFF, "TS_2DIFF", "ts_2diff"},
         {common::RLE, "RLE", "rle"},
         {common::GORILLA, "GORILLA", "gorilla"},
         {common::SPRINTZ, "SPRINTZ", "sprintz"},
+        {common::DICTIONARY, "DICTIONARY", "dictionary"},
         {common::SUBCOLUMN, "SUBCOLUMN", "subcolumn"},
     }};
 

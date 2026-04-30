@@ -214,4 +214,47 @@ TEST_F(DictionaryTest, DictionaryEncoderAndDecoderInt64) {
     }
 }
 
+TEST_F(DictionaryTest, DictionaryEncoderAndDecoderFloatScaledToInteger) {
+    DictionaryEncoder encoder;
+    common::ByteStream stream(1024, common::MOD_DICENCODE_OBJ);
+    encoder.init();
+
+    std::vector<float> values = {1.2f, 1.23f, -3.456f, 1.2f, 0.0f, -3.456f};
+    for (const auto value : values) {
+        ASSERT_EQ(common::E_OK, encoder.encode(value, stream));
+    }
+    encoder.flush(stream);
+
+    DictionaryDecoder decoder;
+    decoder.init();
+
+    for (const auto expected : values) {
+        float actual = 0;
+        ASSERT_EQ(common::E_OK, decoder.read_float(actual, stream));
+        ASSERT_FLOAT_EQ(expected, actual);
+    }
+}
+
+TEST_F(DictionaryTest, DictionaryEncoderAndDecoderDoubleScaledToInteger) {
+    DictionaryEncoder encoder;
+    common::ByteStream stream(1024, common::MOD_DICENCODE_OBJ);
+    encoder.init();
+
+    std::vector<double> values = {1.2, 1.2345, -9876.54321, 1.2, 0.0,
+                                  -9876.54321};
+    for (const auto value : values) {
+        ASSERT_EQ(common::E_OK, encoder.encode(value, stream));
+    }
+    encoder.flush(stream);
+
+    DictionaryDecoder decoder;
+    decoder.init();
+
+    for (const auto expected : values) {
+        double actual = 0;
+        ASSERT_EQ(common::E_OK, decoder.read_double(actual, stream));
+        ASSERT_DOUBLE_EQ(expected, actual);
+    }
+}
+
 }  // namespace storage

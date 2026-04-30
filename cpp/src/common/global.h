@@ -91,7 +91,8 @@ FORCE_INLINE int set_datatype_encoding(uint8_t data_type, uint8_t encoding) {
         case FLOAT:
         case DOUBLE:
             if (encoding_type != PLAIN && encoding_type != TS_2DIFF &&
-                encoding_type != GORILLA && encoding_type != SPRINTZ) {
+                encoding_type != GORILLA && encoding_type != SPRINTZ &&
+                encoding_type != DICTIONARY) {
                 return E_NOT_SUPPORT;
             }
             dtype == FLOAT

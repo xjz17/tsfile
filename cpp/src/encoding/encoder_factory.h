@@ -88,6 +88,8 @@ class EncoderFactory {
                     case DATE:
                     case INT64:
                     case TIMESTAMP:
+                    case FLOAT:
+                    case DOUBLE:
                     case STRING:
                     case TEXT:
                         ALLOC_AND_RETURN_ENCODER(DictionaryEncoder);
