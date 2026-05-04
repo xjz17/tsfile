@@ -19,10 +19,12 @@
 
 #include "write_file.h"
 
+#include <atomic>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
+#include <chrono>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -39,6 +41,32 @@ int fsync(int);
 using namespace common;
 
 namespace storage {
+
+namespace {
+std::atomic<int64_t> g_write_time_ns{0};
+std::atomic<int64_t> g_fsync_time_ns{0};
+std::atomic<int64_t> g_bytes_written{0};
+std::atomic<int64_t> g_write_calls{0};
+std::atomic<int64_t> g_fsync_calls{0};
+}  // namespace
+
+void WriteFile::reset_io_stats() {
+    g_write_time_ns.store(0, std::memory_order_relaxed);
+    g_fsync_time_ns.store(0, std::memory_order_relaxed);
+    g_bytes_written.store(0, std::memory_order_relaxed);
+    g_write_calls.store(0, std::memory_order_relaxed);
+    g_fsync_calls.store(0, std::memory_order_relaxed);
+}
+
+WriteFile::IoStats WriteFile::get_io_stats() {
+    IoStats stats;
+    stats.write_time_ns = g_write_time_ns.load(std::memory_order_relaxed);
+    stats.fsync_time_ns = g_fsync_time_ns.load(std::memory_order_relaxed);
+    stats.bytes_written = g_bytes_written.load(std::memory_order_relaxed);
+    stats.write_calls = g_write_calls.load(std::memory_order_relaxed);
+    stats.fsync_calls = g_fsync_calls.load(std::memory_order_relaxed);
+    return stats;
+}
 
 int WriteFile::create(const std::string& file_path, int flags, mode_t mode) {
     if (fd_ > 0) {
@@ -84,13 +112,20 @@ int WriteFile::write(const char* buf, uint32_t len) {
     int ret = E_OK;
     uint32_t write_done = 0;
     while (write_done < len && IS_SUCC(ret)) {
+        const auto t0 = std::chrono::steady_clock::now();
         int32_t cur_write = ::write(fd_, buf + write_done, len - write_done);
+        const auto t1 = std::chrono::steady_clock::now();
+        g_write_time_ns.fetch_add(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count(),
+            std::memory_order_relaxed);
+        g_write_calls.fetch_add(1, std::memory_order_relaxed);
         if (cur_write < 0) {
             ret = E_FILE_WRITE_ERR;
             // log_err("file writer error, path=%s, error=%d", path_.c_str(),
             // errno);
         } else {
             write_done += cur_write;
+            g_bytes_written.fetch_add(cur_write, std::memory_order_relaxed);
         }
     }
     return ret;
@@ -98,10 +133,16 @@ int WriteFile::write(const char* buf, uint32_t len) {
 
 int WriteFile::sync() {
     ASSERT(fd_ > 0);
+    const auto t0 = std::chrono::steady_clock::now();
     if (::fsync(fd_) < 0) {
         // log_err("file fsync error, path=%s, errno=%d", path_.c_str(), errno);
         return E_FILE_SYNC_ERR;
     }
+    const auto t1 = std::chrono::steady_clock::now();
+    g_fsync_time_ns.fetch_add(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count(),
+        std::memory_order_relaxed);
+    g_fsync_calls.fetch_add(1, std::memory_order_relaxed);
     return E_OK;
 }
 

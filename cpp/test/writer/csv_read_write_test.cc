@@ -26,21 +26,25 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-#include <filesystem>
+#include <cstring>
+#include <dirent.h>
 #include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "common/schema.h"
 #include "common/global.h"
 #include "common/tsfile_common.h"
+#include "file/write_file.h"
 #include "reader/qds_without_timegenerator.h"
 #include "reader/tsfile_reader.h"
 #include "writer/tsfile_writer.h"
 
 namespace storage {
-namespace fs = std::filesystem;
 
 class CsvReadWriteTest : public ::testing::Test {
    protected:
@@ -52,7 +56,8 @@ class CsvReadWriteTest : public ::testing::Test {
     static const std::string kReadResultCsvPath;
     static const std::string kDeviceName;
     static const std::string kMeasurementName;
-    static const int kRepeatTimes = 20;
+    /** Default repeats when env TSFILE_BENCHMARK_REPEAT is unset. */
+    static const int kDefaultRepeatTimes = 20;
     static const int kMaxDecimalPrecision = 8;
 
     struct EncodingConfig {
@@ -88,6 +93,8 @@ class CsvReadWriteTest : public ::testing::Test {
         bool cold_io = true;
         bool write_o_sync = true;
         int64_t fsync_chunk_kb = 64;
+        /** After each intermediate writer.flush(), reopen path and fsync (counts toward Write IO). */
+        bool fsync_every_flush = false;
     };
 
     static bool env_bool(const char *name, bool default_value) {
@@ -124,16 +131,53 @@ class CsvReadWriteTest : public ::testing::Test {
         return static_cast<int64_t>(value);
     }
 
+    /** Write/read benchmark repeat count (1–100). Env: TSFILE_BENCHMARK_REPEAT. */
+    static int benchmark_repeat_times() {
+        int64_t v = env_int64("TSFILE_BENCHMARK_REPEAT", kDefaultRepeatTimes);
+        if (v < 1) {
+            v = 1;
+        }
+        if (v > 100) {
+            v = 100;
+        }
+        return static_cast<int>(v);
+    }
+
     static WriteIoConfig load_write_io_config() {
         WriteIoConfig cfg;
         cfg.cold_io = env_bool("TSFILE_BENCHMARK_COLD_IO", true);
         cfg.write_o_sync = env_bool("TSFILE_WRITE_O_SYNC", cfg.cold_io);
-        cfg.fsync_chunk_kb = env_int64("TSFILE_WRITE_FSYNC_CHUNK_KB", cfg.cold_io ? 64 : 0);
+        // Smaller chunk => more flush() calls => more write/fsync syscalls (higher IO share in benchmark).
+        cfg.fsync_chunk_kb = env_int64("TSFILE_WRITE_FSYNC_CHUNK_KB", cfg.cold_io ? 16 : 0);
         if (cfg.fsync_chunk_kb < 0) {
             cfg.fsync_chunk_kb = 0;
         }
+        cfg.fsync_every_flush = env_bool("TSFILE_BENCHMARK_FSYNC_EVERY_FLUSH", false);
         return cfg;
     }
+
+#ifndef _WIN32
+    /** Extra durability wait not attributed to TsFile's WriteFile (re-open + fsync). */
+    static int64_t benchmark_extra_fsync_path_ns(const std::string &path) {
+        const auto t0 = std::chrono::steady_clock::now();
+        const int fd = ::open(path.c_str(), O_RDWR);
+        if (fd < 0) {
+            return 0;
+        }
+#ifdef F_FULLFSYNC
+        if (::fcntl(fd, F_FULLFSYNC) != 0) {
+            (void)::fsync(fd);
+        }
+#else
+        (void)::fsync(fd);
+#endif
+        (void)::close(fd);
+        const auto t1 = std::chrono::steady_clock::now();
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
+    }
+#else
+    static int64_t benchmark_extra_fsync_path_ns(const std::string &) { return 0; }
+#endif
 
     static std::string trim(const std::string &s) {
         size_t start = 0;
@@ -177,35 +221,52 @@ class CsvReadWriteTest : public ::testing::Test {
     }
 
     static bool dir_exists(const std::string &path) {
-        std::error_code ec;
-        return fs::is_directory(fs::path(path), ec);
+        struct stat st;
+        return ::stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
     }
 
     static int64_t file_size(const std::string &path) {
-        std::error_code ec;
-        const auto size = fs::file_size(fs::path(path), ec);
-        return ec ? 0 : static_cast<int64_t>(size);
+        struct stat st;
+        if (::stat(path.c_str(), &st) != 0) {
+            return 0;
+        }
+        return static_cast<int64_t>(st.st_size);
     }
 
     static std::string basename_no_ext(const std::string &path) {
-        return fs::path(path).stem().string();
+        size_t sep = path.find_last_of("/\\");
+        std::string name = (sep == std::string::npos) ? path : path.substr(sep + 1);
+        size_t dot = name.find_last_of('.');
+        if (dot == std::string::npos) {
+            return name;
+        }
+        return name.substr(0, dot);
+    }
+
+    static bool ends_with(const std::string &s, const char *suffix) {
+        const size_t n = s.size();
+        const size_t m = std::strlen(suffix);
+        return n >= m && s.compare(n - m, m, suffix) == 0;
     }
 
     static std::vector<std::string> list_csv_files(const std::string &dir) {
         std::vector<std::string> files;
-        std::error_code ec;
-        if (!fs::is_directory(fs::path(dir), ec)) {
+        DIR *dp = ::opendir(dir.c_str());
+        if (dp == nullptr) {
             return files;
         }
-        for (const auto &entry : fs::directory_iterator(fs::path(dir), ec)) {
-            if (ec) {
-                break;
+        struct dirent *de = nullptr;
+        while ((de = ::readdir(dp)) != nullptr) {
+            const std::string name = de->d_name;
+            if (name == "." || name == "..") {
+                continue;
             }
-            if (entry.is_regular_file(ec) && !ec &&
-                entry.path().extension() == ".csv") {
-                files.push_back(entry.path().string());
+            if (!ends_with(name, ".csv")) {
+                continue;
             }
+            files.push_back(dir + name);
         }
+        ::closedir(dp);
         std::sort(files.begin(), files.end());
         return files;
     }
@@ -228,8 +289,24 @@ class CsvReadWriteTest : public ::testing::Test {
     }
 
     static void ensure_dir(const std::string &path) {
-        std::error_code ec;
-        fs::create_directories(fs::path(path), ec);
+        if (path.empty()) {
+            return;
+        }
+        // mkdir -p (best effort)
+        std::string cur;
+        cur.reserve(path.size());
+        for (size_t i = 0; i < path.size(); ++i) {
+            char c = path[i];
+            cur.push_back(c);
+            if (c == '/' || c == '\\') {
+                if (!cur.empty() && !dir_exists(cur)) {
+                    (void)::mkdir(cur.c_str(), 0755);
+                }
+            }
+        }
+        if (!dir_exists(cur)) {
+            (void)::mkdir(cur.c_str(), 0755);
+        }
     }
 
     static WriteBenchmarkResult benchmark_write(
@@ -243,9 +320,11 @@ class CsvReadWriteTest : public ::testing::Test {
         int64_t total_dataset_read_ns = 0;
         int64_t total_cpu_ns = 0;
         int64_t total_io_ns = 0;
+        const int repeat_times = benchmark_repeat_times();
 
-        for (int repeat = 0; repeat < kRepeatTimes; ++repeat) {
+        for (int repeat = 0; repeat < repeat_times; ++repeat) {
             std::remove(tsfile_path.c_str());
+            WriteFile::reset_io_stats();
             TsFileWriter writer;
             const int flags = O_WRONLY | O_CREAT | O_TRUNC
 #ifndef _WIN32
@@ -276,6 +355,7 @@ class CsvReadWriteTest : public ::testing::Test {
             int64_t dataset_read_ns = 0;
             int64_t cpu_ns = 0;
             int64_t io_ns = 0;
+            int64_t extra_io_ns = 0;
             const int64_t chunk_bytes = io_cfg.fsync_chunk_kb * 1024;
             int64_t pending_chunk_bytes = 0;
             const auto iter_begin = std::chrono::steady_clock::now();
@@ -308,39 +388,37 @@ class CsvReadWriteTest : public ::testing::Test {
                 if (chunk_bytes > 0) {
                     pending_chunk_bytes += static_cast<int64_t>(line.size()) + 1;
                     if (pending_chunk_bytes >= chunk_bytes) {
-                        const auto io_t0 = std::chrono::steady_clock::now();
                         if (writer.flush() != common::E_OK) {
                             ADD_FAILURE() << "Failed to flush tsfile chunk: " << tsfile_path;
                             return result;
                         }
-                        const auto io_t1 = std::chrono::steady_clock::now();
-                        io_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(io_t1 - io_t0)
-                                     .count();
+                        if (io_cfg.fsync_every_flush) {
+                            extra_io_ns += benchmark_extra_fsync_path_ns(tsfile_path);
+                        }
                         pending_chunk_bytes = 0;
                     }
                 }
             }
 
-            const auto io_t0 = std::chrono::steady_clock::now();
             if (writer.flush() != common::E_OK || writer.close() != common::E_OK) {
                 ADD_FAILURE() << "Failed to flush/close tsfile: " << tsfile_path;
                 return result;
             }
-            const auto io_t1 = std::chrono::steady_clock::now();
+            const auto stats = WriteFile::get_io_stats();
+            io_ns = stats.write_time_ns + stats.fsync_time_ns + extra_io_ns;
             const auto iter_end = std::chrono::steady_clock::now();
 
             total_dataset_read_ns += dataset_read_ns;
             total_cpu_ns += cpu_ns;
-            io_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(io_t1 - io_t0).count();
             total_io_ns += io_ns;
             total_total_ns +=
                 std::chrono::duration_cast<std::chrono::nanoseconds>(iter_end - iter_begin).count();
         }
 
-        result.total_time_ns = total_total_ns / kRepeatTimes;
-        result.dataset_read_time_ns = total_dataset_read_ns / kRepeatTimes;
-        result.cpu_time_ns = total_cpu_ns / kRepeatTimes;
-        result.io_time_ns = total_io_ns / kRepeatTimes;
+        result.total_time_ns = total_total_ns / repeat_times;
+        result.dataset_read_time_ns = total_dataset_read_ns / repeat_times;
+        result.cpu_time_ns = total_cpu_ns / repeat_times;
+        result.io_time_ns = total_io_ns / repeat_times;
         result.tsfile_size_bytes = file_size(tsfile_path);
         return result;
     }
@@ -350,8 +428,9 @@ class CsvReadWriteTest : public ::testing::Test {
         int64_t total_total_ns = 0;
         int64_t total_cpu_ns = 0;
         int64_t points = 0;
+        const int repeat_times = benchmark_repeat_times();
 
-        for (int repeat = 0; repeat < kRepeatTimes; ++repeat) {
+        for (int repeat = 0; repeat < repeat_times; ++repeat) {
             TsFileReader reader;
             if (reader.open(tsfile_path) != common::E_OK) {
                 ADD_FAILURE() << "Failed to open tsfile reader: " << tsfile_path;
@@ -391,8 +470,8 @@ class CsvReadWriteTest : public ::testing::Test {
             total_cpu_ns += cpu_ns;
             points = current_points;
         }
-        result.total_time_ns = total_total_ns / kRepeatTimes;
-        result.cpu_time_ns = total_cpu_ns / kRepeatTimes;
+        result.total_time_ns = total_total_ns / repeat_times;
+        result.cpu_time_ns = total_cpu_ns / repeat_times;
         result.io_time_ns = std::max<int64_t>(0, result.total_time_ns - result.cpu_time_ns);
         result.point_count = points;
         result.tsfile_size_bytes = file_size(tsfile_path);
@@ -408,10 +487,60 @@ class CsvReadWriteTest : public ::testing::Test {
         }
         out << '\n';
     }
+
+    static bool encoding_selected(const std::string &name) {
+        // Optional: comma-separated allowlist, e.g. "GORILLA,SPRINTZ,SUBCOLUMN"
+        const char *env = std::getenv("TSFILE_BENCHMARK_ENCODINGS");
+        if (env == nullptr || *env == '\0') {
+            return true;
+        }
+        std::string s(env);
+        size_t pos = 0;
+        while (pos < s.size()) {
+            while (pos < s.size() &&
+                   (s[pos] == ' ' || s[pos] == '\t' || s[pos] == ',')) {
+                ++pos;
+            }
+            const size_t start = pos;
+            while (pos < s.size() && s[pos] != ',') {
+                ++pos;
+            }
+            size_t end = pos;
+            while (end > start &&
+                   (s[end - 1] == ' ' || s[end - 1] == '\t')) {
+                --end;
+            }
+            if (end > start) {
+                if (name == s.substr(start, end - start)) {
+                    return true;
+                }
+            }
+            if (pos < s.size()) {
+                ++pos;
+            }
+        }
+        return false;
+    }
 };
 
-// const std::string CsvReadWriteTest::kParentDir = "D:/github/xjz17/subcolumn/";
-const std::string CsvReadWriteTest::kParentDir = "/home/allen/xjz17/subcolumn/";
+// Use TSFILE_BENCHMARK_PARENT_DIR to override where datasets/results are placed.
+// Default: <repo-root>/cpp/test/writer/benchmark_data/
+const std::string CsvReadWriteTest::kParentDir = []() -> std::string {
+    const char *raw = std::getenv("TSFILE_BENCHMARK_PARENT_DIR");
+    std::string base;
+    if (raw != nullptr && *raw != '\0') {
+        base = raw;
+    } else {
+        char buf[4096];
+        const char *cwd = ::getcwd(buf, sizeof(buf));
+        base = (cwd != nullptr) ? std::string(cwd) : std::string(".");
+        base += "/cpp/test/writer/benchmark_data";
+    }
+    if (!base.empty() && base.back() != '/' && base.back() != '\\') {
+        base.push_back('/');
+    }
+    return base;
+}();
 const std::string CsvReadWriteTest::kInputParentDir =
     CsvReadWriteTest::kParentDir + "dataset_tsfile/";
 const std::string CsvReadWriteTest::kOutputParentDir =
@@ -437,16 +566,18 @@ TEST_F(CsvReadWriteTest, CompareCsvReadWriteEncodings) {
         GTEST_SKIP() << "No dataset csv files found under: " << kInputParentDir;
     }
 
-    const std::array<EncodingConfig, 1> encodings = {{
-        // {common::TS_2DIFF, "TS_2DIFF", "ts_2diff"},
-        // {common::RLE, "RLE", "rle"},
-        // {common::GORILLA, "GORILLA", "gorilla"},
-        // {common::SPRINTZ, "SPRINTZ", "sprintz"},
-        // {common::DICTIONARY, "DICTIONARY", "dictionary"},
-        // {common::SUBCOLUMN, "SUBCOLUMN", "subcolumn"},
-        // {common::SPRINTZ_SUBCOLUMN, "SPRINTZ_SUBCOLUMN", "sprintz_subcolumn"},
-        // {common::TS_2DIFF_SUBCOLUMN, "TS_2DIFF_SUBCOLUMN", "ts_2diff_subcolumn"},
+    // Order matches subcolumn/merge_compression_ratio_time_de_relayout.py alg_order
+    // for the TsFile-supported subset (GORILLA, RLE, BPE, DE, Sub-column, SPRINTZ, ...).
+    const std::array<EncodingConfig, 9> encodings = {{
+        {common::GORILLA, "GORILLA", "gorilla"},
+        {common::RLE, "RLE", "rle"},
         {common::BITPACKING, "BITPACKING", "bitpacking"},
+        {common::DICTIONARY, "DICTIONARY", "dictionary"},
+        {common::SUBCOLUMN, "SUBCOLUMN", "subcolumn"},
+        {common::SPRINTZ, "SPRINTZ", "sprintz"},
+        {common::SPRINTZ_SUBCOLUMN, "SPRINTZ_SUBCOLUMN", "sprintz_subcolumn"},
+        {common::TS_2DIFF, "TS_2DIFF", "ts_2diff"},
+        {common::TS_2DIFF_SUBCOLUMN, "TS_2DIFF_SUBCOLUMN", "ts_2diff_subcolumn"},
     }};
 
     std::ofstream write_csv(kWriteResultCsvPath.c_str(), std::ios::out | std::ios::trunc);
@@ -481,6 +612,9 @@ TEST_F(CsvReadWriteTest, CompareCsvReadWriteEncodings) {
                   << ", multiplier=" << multiplier << std::endl;
 
         for (const auto &cfg : encodings) {
+            if (!encoding_selected(cfg.name)) {
+                continue;
+            }
             const std::string tsfile_path = kTsFileOutputDir + profile.dataset_name + "_" +
                                             cfg.file_suffix + "_cpp_v2.tsfile";
             std::cout << "[CsvReadWriteTest]   Encoding=" << cfg.name

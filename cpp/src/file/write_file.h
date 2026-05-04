@@ -20,6 +20,7 @@
 #ifndef FILE_WRITE_FILE_H
 #define FILE_WRITE_FILE_H
 
+#include <cstdint>
 #include <string>
 
 #include "utils/storage_utils.h"
@@ -29,6 +30,14 @@ namespace storage {
 
 class WriteFile {
    public:
+    struct IoStats {
+        int64_t write_time_ns = 0;
+        int64_t fsync_time_ns = 0;
+        int64_t bytes_written = 0;
+        int64_t write_calls = 0;
+        int64_t fsync_calls = 0;
+    };
+
     WriteFile() : path_(), fd_(-1) {}
     int create(const std::string& file_name, int flags, mode_t mode);
     bool file_opened() const { return fd_ > 0; }
@@ -44,6 +53,10 @@ class WriteFile {
     /** Current file offset. After seek_to_end(), equals file size (for
      * recovery). */
     int64_t get_position();
+
+    /** Benchmark-only: reset and fetch process-wide IO syscall stats. */
+    static void reset_io_stats();
+    static IoStats get_io_stats();
 
    private:
     int do_create(int flags, mode_t mode);
