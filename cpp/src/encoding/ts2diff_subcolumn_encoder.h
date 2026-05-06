@@ -20,71 +20,39 @@
 #ifndef ENCODING_TS2DIFF_SUBCOLUMN_ENCODER_H
 #define ENCODING_TS2DIFF_SUBCOLUMN_ENCODER_H
 
+#include <limits>
 #include <vector>
 
 #include "common/allocator/byte_stream.h"
 #include "subcolumn_encoder.h"
-#include "ts2diff_encoder.h"
+#include "utils/db_utils.h"
 
 namespace storage {
 
-template <typename TS2DIFFEncoderType>
+template <typename T>
 class TS2DIFFSubcolumnEncoderBase : public Encoder {
    public:
-    TS2DIFFSubcolumnEncoderBase()
-        : ts2diff_cache_(1024, common::MOD_ENCODER_OBJ) {}
+    static constexpr int BLOCK_SIZE = 512;
 
+    TS2DIFFSubcolumnEncoderBase() = default;
     ~TS2DIFFSubcolumnEncoderBase() override = default;
 
     void reset() override {
-        ts2diff_encoder_.reset();
         subcolumn_encoder_.reset();
-        ts2diff_cache_.reset();
+        values_.clear();
     }
 
     void destroy() override {}
 
     int flush(common::ByteStream& out_stream) override {
-        int ret = ts2diff_encoder_.flush(ts2diff_cache_);
-        if (ret != common::E_OK) {
-            return ret;
-        }
-
-        const uint32_t ts2diff_size = ts2diff_cache_.total_size();
-        if (ts2diff_size == 0) {
-            ts2diff_cache_.reset();
+        if (values_.empty()) {
             return common::E_OK;
         }
-
-        if (RET_FAIL(common::SerializationUtil::write_var_uint(ts2diff_size,
-                                                               out_stream))) {
-            return common::E_FILE_WRITE_ERR;
-        }
-
-        std::vector<uint8_t> bytes(ts2diff_size);
-        uint32_t read_len = 0;
-        ret = ts2diff_cache_.read_buf(bytes.data(), ts2diff_size, read_len);
-        if (ret != common::E_OK || read_len != ts2diff_size) {
-            return common::E_PARTIAL_READ;
-        }
-
-        for (uint32_t i = 0; i < ts2diff_size; ++i) {
-            if (RET_FAIL(subcolumn_encoder_.encode(
-                    static_cast<int32_t>(bytes[i]), out_stream))) {
-                return common::E_ENCODE_ERR;
-            }
-        }
-        ret = subcolumn_encoder_.flush(out_stream);
-        if (ret != common::E_OK) {
-            return ret;
-        }
-
-        ts2diff_cache_.reset();
-        return common::E_OK;
+        return flush_block(out_stream);
     }
 
     int get_max_byte_size() override {
-        return ts2diff_encoder_.get_max_byte_size() * 2 + 64;
+        return static_cast<int>(sizeof(T) * BLOCK_SIZE * 2 + 64);
     }
 
     int encode(bool value, common::ByteStream& out_stream) override {
@@ -119,44 +87,122 @@ class TS2DIFFSubcolumnEncoderBase : public Encoder {
     }
 
    protected:
-    TS2DIFFEncoderType ts2diff_encoder_{};
-    IntSubcolumnEncoder subcolumn_encoder_{};
-    common::ByteStream ts2diff_cache_;
+    int encode_value(T value, common::ByteStream& out_stream) {
+        values_.push_back(value);
+        if (static_cast<int>(values_.size()) >= BLOCK_SIZE) {
+            return flush_block(out_stream);
+        }
+        return common::E_OK;
+    }
+
+    static bool in_range(int64_t value) {
+        const int64_t lo = static_cast<int64_t>(std::numeric_limits<T>::min());
+        const int64_t hi = static_cast<int64_t>(std::numeric_limits<T>::max());
+        return value >= lo && value <= hi;
+    }
+
+    int flush_block(common::ByteStream& out_stream) {
+        const int count = static_cast<int>(values_.size());
+        if (common::SerializationUtil::write_i32(count, out_stream) != common::E_OK) {
+            return common::E_FILE_WRITE_ERR;
+        }
+        if (count <= 0) {
+            values_.clear();
+            return common::E_OK;
+        }
+
+        if constexpr (sizeof(T) == sizeof(int32_t)) {
+            if (common::SerializationUtil::write_i32(
+                    static_cast<int32_t>(values_[0]), out_stream) != common::E_OK) {
+                return common::E_FILE_WRITE_ERR;
+            }
+        } else {
+            if (common::SerializationUtil::write_i64(
+                    static_cast<int64_t>(values_[0]), out_stream) != common::E_OK) {
+                return common::E_FILE_WRITE_ERR;
+            }
+        }
+        if (count == 1) {
+            values_.clear();
+            return common::E_OK;
+        }
+
+        int64_t min_delta = std::numeric_limits<int64_t>::max();
+        std::vector<int64_t> deltas;
+        deltas.reserve(count - 1);
+        for (int i = 1; i < count; ++i) {
+            const int64_t prev = static_cast<int64_t>(values_[i - 1]);
+            const int64_t cur = static_cast<int64_t>(values_[i]);
+            const int64_t d = cur - prev;
+            deltas.push_back(d);
+            if (d < min_delta) {
+                min_delta = d;
+            }
+        }
+
+        if constexpr (sizeof(T) == sizeof(int32_t)) {
+            if (!in_range(min_delta) ||
+                common::SerializationUtil::write_i32(
+                    static_cast<int32_t>(min_delta), out_stream) != common::E_OK) {
+                return common::E_OVERFLOW;
+            }
+        } else {
+            if (common::SerializationUtil::write_i64(min_delta, out_stream) != common::E_OK) {
+                return common::E_FILE_WRITE_ERR;
+            }
+        }
+
+        for (int i = 0; i < count - 1; ++i) {
+            const int64_t norm = deltas[i] - min_delta;
+            if (!in_range(norm)) {
+                return common::E_OVERFLOW;
+            }
+            const int ret = subcolumn_encoder_.encode(static_cast<T>(norm), out_stream);
+            if (ret != common::E_OK) {
+                return ret;
+            }
+        }
+        const int ret = subcolumn_encoder_.flush(out_stream);
+        if (ret != common::E_OK) {
+            return ret;
+        }
+        values_.clear();
+        return common::E_OK;
+    }
+
+    SubcolumnEncoder<T> subcolumn_encoder_{};
+    std::vector<T> values_;
 };
 
 class Int32TS2DIFFSubcolumnEncoder
-    : public TS2DIFFSubcolumnEncoderBase<IntTS2DIFFEncoder> {
+    : public TS2DIFFSubcolumnEncoderBase<int32_t> {
    public:
     int encode(int32_t value, common::ByteStream& out_stream) override {
-        (void)out_stream;
-        return ts2diff_encoder_.encode(value, ts2diff_cache_);
+        return encode_value(value, out_stream);
     }
 };
 
 class Int64TS2DIFFSubcolumnEncoder
-    : public TS2DIFFSubcolumnEncoderBase<LongTS2DIFFEncoder> {
+    : public TS2DIFFSubcolumnEncoderBase<int64_t> {
    public:
     int encode(int64_t value, common::ByteStream& out_stream) override {
-        (void)out_stream;
-        return ts2diff_encoder_.encode(value, ts2diff_cache_);
+        return encode_value(value, out_stream);
     }
 };
 
 class FloatTS2DIFFSubcolumnEncoder
-    : public TS2DIFFSubcolumnEncoderBase<FloatTS2DIFFEncoder> {
+    : public TS2DIFFSubcolumnEncoderBase<int32_t> {
    public:
     int encode(float value, common::ByteStream& out_stream) override {
-        (void)out_stream;
-        return ts2diff_encoder_.encode(value, ts2diff_cache_);
+        return encode_value(common::float_to_int(value), out_stream);
     }
 };
 
 class DoubleTS2DIFFSubcolumnEncoder
-    : public TS2DIFFSubcolumnEncoderBase<DoubleTS2DIFFEncoder> {
+    : public TS2DIFFSubcolumnEncoderBase<int64_t> {
    public:
     int encode(double value, common::ByteStream& out_stream) override {
-        (void)out_stream;
-        return ts2diff_encoder_.encode(value, ts2diff_cache_);
+        return encode_value(common::double_to_long(value), out_stream);
     }
 };
 
