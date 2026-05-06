@@ -19,6 +19,8 @@
 
 #include "file/read_file.h"
 
+#include <atomic>
+#include <chrono>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -35,6 +37,20 @@ ssize_t pread(int fd, void* buf, size_t count, uint64_t offset);
 
 using namespace common;
 namespace storage {
+
+namespace {
+std::atomic<int64_t> g_read_time_ns{0};
+}  // namespace
+
+void ReadFile::reset_io_stats() {
+    g_read_time_ns.store(0, std::memory_order_relaxed);
+}
+
+ReadFile::IoStats ReadFile::get_io_stats() {
+    IoStats stats;
+    stats.read_time_ns = g_read_time_ns.load(std::memory_order_relaxed);
+    return stats;
+}
 
 void ReadFile::close() {
     if (fd_ > 0) {
@@ -114,8 +130,14 @@ int ReadFile::read(int64_t offset, char* buf, int32_t buf_size,
     int ret = E_OK;
     read_len = 0;
     while (read_len < buf_size) {
+        const auto t0 = std::chrono::steady_clock::now();
         ssize_t pread_size = ::pread(fd_, buf + read_len, buf_size - read_len,
                                      static_cast<off_t>(offset + read_len));
+        const auto t1 = std::chrono::steady_clock::now();
+        g_read_time_ns.fetch_add(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0)
+                .count(),
+            std::memory_order_relaxed);
         if (pread_size < 0) {
             ret = E_FILE_READ_ERR;
             ////log_err("tsfile reader error, file_path=%s, errno=%d",

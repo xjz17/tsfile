@@ -31,6 +31,10 @@ namespace storage {
 
 class ReadFile {
    public:
+    struct IoStats {
+        int64_t read_time_ns = 0;
+    };
+
     ReadFile() : file_path_(), fd_(-1), file_size_(-1) {}
     ~ReadFile() { destroy(); }
     void destroy() { close(); }
@@ -47,6 +51,9 @@ class ReadFile {
     int read(int64_t offset, char* buf, int32_t buf_size,
              int32_t& ret_read_len);
     void close();
+
+    static void reset_io_stats();
+    static IoStats get_io_stats();
 
    private:
     int get_file_size(int64_t& file_size);

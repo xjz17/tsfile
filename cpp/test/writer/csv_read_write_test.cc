@@ -39,6 +39,7 @@
 #include "common/schema.h"
 #include "common/global.h"
 #include "common/tsfile_common.h"
+#include "file/read_file.h"
 #include "file/write_file.h"
 #include "reader/qds_without_timegenerator.h"
 #include "reader/tsfile_reader.h"
@@ -95,6 +96,13 @@ class CsvReadWriteTest : public ::testing::Test {
         int64_t fsync_chunk_kb = 64;
         /** After each intermediate writer.flush(), reopen path and fsync (counts toward Write IO). */
         bool fsync_every_flush = false;
+    };
+
+    struct ReadIoConfig {
+        bool cold_io = true;
+        bool drop_cache_before_read = true;
+        /** Extra full-file pread scans after query loop; each scan counts toward Read IO. */
+        int64_t extra_scan_rounds = 2;
     };
 
     static bool env_bool(const char *name, bool default_value) {
@@ -156,6 +164,22 @@ class CsvReadWriteTest : public ::testing::Test {
         return cfg;
     }
 
+    static ReadIoConfig load_read_io_config() {
+        ReadIoConfig cfg;
+        cfg.cold_io = env_bool("TSFILE_BENCHMARK_READ_COLD_IO", true);
+        cfg.drop_cache_before_read =
+            env_bool("TSFILE_BENCHMARK_READ_DROP_CACHE", cfg.cold_io);
+        cfg.extra_scan_rounds = env_int64(
+            "TSFILE_BENCHMARK_READ_EXTRA_SCAN_ROUNDS", cfg.cold_io ? 2 : 0);
+        if (cfg.extra_scan_rounds < 0) {
+            cfg.extra_scan_rounds = 0;
+        }
+        if (cfg.extra_scan_rounds > 100) {
+            cfg.extra_scan_rounds = 100;
+        }
+        return cfg;
+    }
+
 #ifndef _WIN32
     /** Extra durability wait not attributed to TsFile's WriteFile (re-open + fsync). */
     static int64_t benchmark_extra_fsync_path_ns(const std::string &path) {
@@ -177,6 +201,62 @@ class CsvReadWriteTest : public ::testing::Test {
     }
 #else
     static int64_t benchmark_extra_fsync_path_ns(const std::string &) { return 0; }
+#endif
+
+#ifndef _WIN32
+    static void benchmark_drop_file_cache(const std::string &path) {
+#ifdef POSIX_FADV_DONTNEED
+        const int fd = ::open(path.c_str(), O_RDONLY);
+        if (fd < 0) {
+            return;
+        }
+        (void)::posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
+        (void)::close(fd);
+#else
+        (void)path;
+#endif
+    }
+
+    static int64_t benchmark_extra_read_path_ns(
+        const std::string &path,
+        int64_t rounds,
+        bool drop_cache_each_round) {
+        if (rounds <= 0) {
+            return 0;
+        }
+        constexpr int32_t kBufSize = 256 * 1024;
+        std::vector<char> buf(kBufSize);
+        int64_t total_ns = 0;
+        for (int64_t r = 0; r < rounds; ++r) {
+            if (drop_cache_each_round) {
+                benchmark_drop_file_cache(path);
+            }
+            const int fd = ::open(path.c_str(), O_RDONLY);
+            if (fd < 0) {
+                continue;
+            }
+            const auto t0 = std::chrono::steady_clock::now();
+            int64_t off = 0;
+            while (true) {
+                const ssize_t n = ::pread(fd, buf.data(), kBufSize, static_cast<off_t>(off));
+                if (n <= 0) {
+                    break;
+                }
+                off += static_cast<int64_t>(n);
+            }
+            const auto t1 = std::chrono::steady_clock::now();
+            (void)::close(fd);
+            total_ns +=
+                std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
+        }
+        return total_ns;
+    }
+#else
+    static void benchmark_drop_file_cache(const std::string &) {}
+    static int64_t benchmark_extra_read_path_ns(
+        const std::string &, int64_t, bool) {
+        return 0;
+    }
 #endif
 
     static std::string trim(const std::string &s) {
@@ -425,12 +505,18 @@ class CsvReadWriteTest : public ::testing::Test {
 
     static ReadBenchmarkResult benchmark_read(const std::string &tsfile_path) {
         ReadBenchmarkResult result;
+        const ReadIoConfig io_cfg = load_read_io_config();
         int64_t total_total_ns = 0;
         int64_t total_cpu_ns = 0;
+        int64_t total_io_ns = 0;
         int64_t points = 0;
         const int repeat_times = benchmark_repeat_times();
 
         for (int repeat = 0; repeat < repeat_times; ++repeat) {
+            if (io_cfg.drop_cache_before_read) {
+                benchmark_drop_file_cache(tsfile_path);
+            }
+            ReadFile::reset_io_stats();
             TsFileReader reader;
             if (reader.open(tsfile_path) != common::E_OK) {
                 ADD_FAILURE() << "Failed to open tsfile reader: " << tsfile_path;
@@ -462,17 +548,24 @@ class CsvReadWriteTest : public ::testing::Test {
                 cpu_ns +=
                     std::chrono::duration_cast<std::chrono::nanoseconds>(cpu_t1 - cpu_t0).count();
             } while (true);
+            int64_t extra_io_ns = 0;
+            if (io_cfg.extra_scan_rounds > 0) {
+                extra_io_ns = benchmark_extra_read_path_ns(
+                    tsfile_path, io_cfg.extra_scan_rounds, io_cfg.cold_io);
+            }
             const auto t1 = std::chrono::steady_clock::now();
             reader.destroy_query_data_set(qds);
             reader.close();
+            const auto io_stats = ReadFile::get_io_stats();
 
             total_total_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
             total_cpu_ns += cpu_ns;
+            total_io_ns += io_stats.read_time_ns + extra_io_ns;
             points = current_points;
         }
         result.total_time_ns = total_total_ns / repeat_times;
         result.cpu_time_ns = total_cpu_ns / repeat_times;
-        result.io_time_ns = std::max<int64_t>(0, result.total_time_ns - result.cpu_time_ns);
+        result.io_time_ns = total_io_ns / repeat_times;
         result.point_count = points;
         result.tsfile_size_bytes = file_size(tsfile_path);
         return result;
