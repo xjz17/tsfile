@@ -151,7 +151,7 @@ class DictionaryEncoder : public Encoder {
     }
 
    public:
-    DictionaryEncoder() {}
+    DictionaryEncoder() { init(); }
     ~DictionaryEncoder() override {}
 
     int encode(bool value, common::ByteStream& out_stream) override {
@@ -165,7 +165,8 @@ class DictionaryEncoder : public Encoder {
         if (int32_entry_index_.count(value) == 0) {
             int32_index_entry_.push_back(value);
             map_size_ += get_var_int32_size(value);
-            int32_entry_index_[value] = int32_entry_index_.size();
+            int32_entry_index_[value] =
+                static_cast<int>(int32_index_entry_.size()) - 1;
         }
         values_encoder_.encode(int32_entry_index_[value], out_stream);
         return common::E_OK;
@@ -178,7 +179,8 @@ class DictionaryEncoder : public Encoder {
         if (int64_entry_index_.count(value) == 0) {
             int64_index_entry_.push_back(value);
             map_size_ += sizeof(int64_t);
-            int64_entry_index_[value] = int64_entry_index_.size();
+            int64_entry_index_[value] =
+                static_cast<int>(int64_index_entry_.size()) - 1;
         }
         values_encoder_.encode(int64_entry_index_[value], out_stream);
         return common::E_OK;
@@ -193,7 +195,8 @@ class DictionaryEncoder : public Encoder {
             map_size_ += sizeof(int64_t);
             float_scale_ =
                 std::max(float_scale_, get_decimal_places(value, 6));
-            float_entry_index_[value] = float_entry_index_.size();
+            float_entry_index_[value] =
+                static_cast<int>(float_index_entry_.size()) - 1;
         }
         values_encoder_.encode(float_entry_index_[value], out_stream);
         return common::E_OK;
@@ -208,7 +211,8 @@ class DictionaryEncoder : public Encoder {
             map_size_ += sizeof(int64_t);
             double_scale_ =
                 std::max(double_scale_, get_decimal_places(value, 15));
-            double_entry_index_[value] = double_entry_index_.size();
+            double_entry_index_[value] =
+                static_cast<int>(double_index_entry_.size()) - 1;
         }
         values_encoder_.encode(double_entry_index_[value], out_stream);
         return common::E_OK;
@@ -258,7 +262,8 @@ class DictionaryEncoder : public Encoder {
         if (string_entry_index_.count(value) == 0) {
             string_index_entry_.push_back(value);
             map_size_ = map_size_ + value.length();
-            string_entry_index_[value] = string_entry_index_.size();
+            string_entry_index_[value] =
+                static_cast<int>(string_index_entry_.size()) - 1;
         }
         values_encoder_.encode(string_entry_index_[value], out);
         return common::E_OK;

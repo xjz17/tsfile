@@ -176,6 +176,7 @@ class DictionaryDecoder : public Decoder {
     }
 
    public:
+    DictionaryDecoder() { init(); }
     ~DictionaryDecoder() override = default;
     bool has_remaining(const common::ByteStream& buffer) override {
         return (is_map_initialized() && value_decoder_.has_next_package()) ||
@@ -304,7 +305,12 @@ class DictionaryDecoder : public Decoder {
             }
         }
         int32_t code = 0;
-        value_decoder_.read_int(code, buffer);
+        if (value_decoder_.read_int(code, buffer) != common::E_OK) {
+            return "";
+        }
+        if (code < 0 || code >= (int32_t)string_entry_index_.size()) {
+            return "";
+        }
         return string_entry_index_[code];
     }
 

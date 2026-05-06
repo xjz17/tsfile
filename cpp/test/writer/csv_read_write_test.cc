@@ -566,9 +566,10 @@ TEST_F(CsvReadWriteTest, CompareCsvReadWriteEncodings) {
         GTEST_SKIP() << "No dataset csv files found under: " << kInputParentDir;
     }
 
-    // Order matches subcolumn/merge_compression_ratio_time_de_relayout.py alg_order
-    // for the TsFile-supported subset (GORILLA, RLE, BPE, DE, Sub-column, SPRINTZ, ...).
-    const std::array<EncodingConfig, 9> encodings = {{
+    // Order matches subcolumn plotting scripts and adds a "LZ4" baseline:
+    // plain encoding + LZ4 compressor.
+    const std::array<EncodingConfig, 10> encodings = {{
+        {common::PLAIN, "LZ4", "plain_lz4"},
         {common::GORILLA, "GORILLA", "gorilla"},
         {common::RLE, "RLE", "rle"},
         {common::BITPACKING, "BITPACKING", "bitpacking"},
