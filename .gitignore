@@ -20,9 +20,6 @@ docs/src/.vuepress/.temp/
 docs/src/.vuepress/dist/
 docs/pnpm-lock.yaml
 
-# python venv (for pyfastlanes / FastLanesTest)
-.venv/
-
 # python files
 python/build
 python/dist

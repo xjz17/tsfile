@@ -32,7 +32,7 @@ import java.io.IOException;
 public abstract class SprintzEncoder extends Encoder {
   protected static final Logger logger = LoggerFactory.getLogger(SprintzEncoder.class);
 
-  // Segment block size to compress: 8 (LongSprintzEncoder overrides from config)
+  // Segment block size to compress:8
   protected int Block_size = 8;
 
   // group size maximum

@@ -32,8 +32,4 @@ public class TsFileEncodingException extends TsFileRuntimeException {
   public TsFileEncodingException(String message) {
     super(message);
   }
-
-  public TsFileEncodingException(String message, Throwable cause) {
-    super(message, cause);
-  }
 }
