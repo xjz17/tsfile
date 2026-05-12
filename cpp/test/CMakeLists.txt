@@ -134,6 +134,16 @@ if (ENABLE_ZLIB)
     list(APPEND TEST_SRCS ${ZLIB_TEST_SRCS})
 endif()
 
+if (ENABLE_ZSTD)
+    file(GLOB_RECURSE ZSTD_TEST_SRCS "compress/*zstd*_test.cc")
+    list(APPEND TEST_SRCS ${ZSTD_TEST_SRCS})
+endif()
+
+if (ENABLE_LZMA)
+    file(GLOB_RECURSE LZMA_TEST_SRCS "compress/*lzma*_test.cc")
+    list(APPEND TEST_SRCS ${LZMA_TEST_SRCS})
+endif()
+
 if (${COV_ENABLED})
     message("Enable code cov...")
     add_compile_options(-fprofile-arcs -ftest-coverage)

@@ -38,6 +38,14 @@
 #include "lz4_compressor.h"
 #endif
 
+#ifdef ENABLE_ZSTD
+#include "zstd_compressor.h"
+#endif
+
+#ifdef ENABLE_LZMA
+#include "lzma_compressor.h"
+#endif
+
 namespace storage {
 
 #define ALLOC_AND_RETURN_COMPRESSPR(CompressorClass)               \
@@ -78,6 +86,18 @@ class CompressorFactory {
         } else if (type == common::LZ4) {
 #ifdef ENABLE_LZ4
             ALLOC_AND_RETURN_COMPRESSPR(LZ4Compressor);
+#else
+            return nullptr;
+#endif
+        } else if (type == common::ZSTD) {
+#ifdef ENABLE_ZSTD
+            ALLOC_AND_RETURN_COMPRESSPR(ZSTDCompressor);
+#else
+            return nullptr;
+#endif
+        } else if (type == common::LZMA) {
+#ifdef ENABLE_LZMA
+            ALLOC_AND_RETURN_COMPRESSPR(LZMACompressor);
 #else
             return nullptr;
 #endif

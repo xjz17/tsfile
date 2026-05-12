@@ -31,6 +31,8 @@ enable_snappy=ON
 enable_lz4=ON
 enable_lzokay=ON
 enable_zlib=ON
+enable_zstd=ON
+enable_lzma=ON
 
 shell_dir=$(cd "$(dirname "$0")";pwd)
 
@@ -51,6 +53,8 @@ function print_config()
   echo "enable_lz4=$enable_lz4"
   echo "enable_lzokay=$enable_lzokay"
   echo "enable_zlib=$enable_zlib"
+  echo "enable_zstd=$enable_zstd"
+  echo "enable_lzma=$enable_lzma"
 }
 
 function run_test_for_cov()
@@ -93,6 +97,10 @@ parse_options()
       enable_lzokay=$(get_key_value "$1");;
     --enable-zlib=*)
       enable_zlib=$(get_key_value "$1");;
+    --enable-zstd=*)
+      enable_zstd=$(get_key_value "$1");;
+    --enable-lzma=*)
+      enable_lzma=$(get_key_value "$1");;
     --disable-antlr4)
       enable_antlr4=OFF;;
     --disable-snappy)
@@ -103,6 +111,10 @@ parse_options()
       enable_lzokay=OFF;;
     --disable-zlib)
       enable_zlib=OFF;;
+    --disable-zstd)
+      enable_zstd=OFF;;
+    --disable-lzma)
+      enable_lzma=OFF;;
     #-h | --help)
     #  usage
     #  exit 0;;
@@ -168,7 +180,9 @@ cmake ../../                           \
   -DENABLE_SNAPPY=$enable_snappy       \
   -DENABLE_LZ4=$enable_lz4             \
   -DENABLE_LZOKAY=$enable_lzokay       \
-  -DENABLE_ZLIB=$enable_zlib
+  -DENABLE_ZLIB=$enable_zlib           \
+  -DENABLE_ZSTD=$enable_zstd           \
+  -DENABLE_LZMA=$enable_lzma
 
 VERBOSE=1 make
 VERBOSE=1 make install

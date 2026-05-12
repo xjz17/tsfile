@@ -53,6 +53,7 @@ class CsvReadWriteTest : public ::testing::Test {
     static const std::string kInputParentDir;
     static const std::string kOutputParentDir;
     static const std::string kTsFileOutputDir;
+    static const std::string kReadDecodedOutputDir;
     static const std::string kWriteResultCsvPath;
     static const std::string kReadResultCsvPath;
     static const std::string kDeviceName;
@@ -63,6 +64,7 @@ class CsvReadWriteTest : public ::testing::Test {
 
     struct EncodingConfig {
         common::TSEncoding encoding;
+        common::CompressionType compression;
         const char *name;
         const char *file_suffix;
     };
@@ -86,6 +88,7 @@ class CsvReadWriteTest : public ::testing::Test {
         int64_t total_time_ns = 0;
         int64_t cpu_time_ns = 0;
         int64_t io_time_ns = 0;
+        int64_t decoded_csv_write_time_ns = 0;
         int64_t point_count = 0;
         int64_t tsfile_size_bytes = 0;
     };
@@ -313,6 +316,22 @@ class CsvReadWriteTest : public ::testing::Test {
         return static_cast<int64_t>(st.st_size);
     }
 
+    static int64_t write_decoded_values_csv(
+        const std::string &csv_path,
+        const std::vector<int64_t> &values) {
+        const auto t0 = std::chrono::steady_clock::now();
+        std::ofstream out(csv_path.c_str(), std::ios::out | std::ios::trunc);
+        if (!out.good()) {
+            return 0;
+        }
+        out << "value\n";
+        for (size_t i = 0; i < values.size(); ++i) {
+            out << values[i] << '\n';
+        }
+        const auto t1 = std::chrono::steady_clock::now();
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
+    }
+
     static std::string basename_no_ext(const std::string &path) {
         size_t sep = path.find_last_of("/\\");
         std::string name = (sep == std::string::npos) ? path : path.substr(sep + 1);
@@ -393,6 +412,7 @@ class CsvReadWriteTest : public ::testing::Test {
         const DatasetProfile &dataset,
         int64_t multiplier,
         common::TSEncoding encoding,
+        common::CompressionType compression,
         const std::string &tsfile_path) {
         WriteBenchmarkResult result;
         const WriteIoConfig io_cfg = load_write_io_config();
@@ -420,7 +440,7 @@ class CsvReadWriteTest : public ::testing::Test {
             }
             if (writer.register_timeseries(
                     kDeviceName, MeasurementSchema(kMeasurementName, common::INT64,
-                                                   encoding, common::LZ4)) != common::E_OK) {
+                                                   encoding, compression)) != common::E_OK) {
                 ADD_FAILURE() << "Failed to register timeseries for: " << tsfile_path;
                 return result;
             }
@@ -503,12 +523,15 @@ class CsvReadWriteTest : public ::testing::Test {
         return result;
     }
 
-    static ReadBenchmarkResult benchmark_read(const std::string &tsfile_path) {
+    static ReadBenchmarkResult benchmark_read(
+        const std::string &tsfile_path,
+        const std::string &decoded_csv_path) {
         ReadBenchmarkResult result;
         const ReadIoConfig io_cfg = load_read_io_config();
         int64_t total_total_ns = 0;
         int64_t total_cpu_ns = 0;
         int64_t total_io_ns = 0;
+        int64_t total_decoded_csv_write_ns = 0;
         int64_t points = 0;
         const int repeat_times = benchmark_repeat_times();
 
@@ -535,14 +558,29 @@ class CsvReadWriteTest : public ::testing::Test {
             bool has_next = false;
             int64_t current_points = 0;
             int64_t cpu_ns = 0;
+            std::vector<int64_t> decoded_values;
             do {
                 if (IS_FAIL(qds->next(has_next)) || !has_next) {
                     break;
                 }
                 const auto cpu_t0 = std::chrono::steady_clock::now();
                 RowRecord *record = qds->get_row_record();
-                if (record != nullptr && !record->get_fields()->empty()) {
-                    ++current_points;
+                if (record != nullptr && record->get_fields() != nullptr &&
+                    record->get_fields()->size() > 1) {
+                    Field *value_field = record->get_field(1);
+                    if (value_field != nullptr &&
+                        value_field->type_ != common::NULL_TYPE) {
+                        if (value_field->type_ == common::INT64 ||
+                            value_field->type_ == common::TIMESTAMP) {
+                            decoded_values.push_back(value_field->get_value<int64_t>());
+                            ++current_points;
+                        } else if (value_field->type_ == common::INT32 ||
+                                   value_field->type_ == common::DATE) {
+                            decoded_values.push_back(
+                                static_cast<int64_t>(value_field->get_value<int32_t>()));
+                            ++current_points;
+                        }
+                    }
                 }
                 const auto cpu_t1 = std::chrono::steady_clock::now();
                 cpu_ns +=
@@ -557,15 +595,19 @@ class CsvReadWriteTest : public ::testing::Test {
             reader.destroy_query_data_set(qds);
             reader.close();
             const auto io_stats = ReadFile::get_io_stats();
+            const int64_t decoded_csv_write_ns =
+                write_decoded_values_csv(decoded_csv_path, decoded_values);
 
             total_total_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
             total_cpu_ns += cpu_ns;
             total_io_ns += io_stats.read_time_ns + extra_io_ns;
+            total_decoded_csv_write_ns += decoded_csv_write_ns;
             points = current_points;
         }
         result.total_time_ns = total_total_ns / repeat_times;
         result.cpu_time_ns = total_cpu_ns / repeat_times;
         result.io_time_ns = total_io_ns / repeat_times;
+        result.decoded_csv_write_time_ns = total_decoded_csv_write_ns / repeat_times;
         result.point_count = points;
         result.tsfile_size_bytes = file_size(tsfile_path);
         return result;
@@ -614,6 +656,41 @@ class CsvReadWriteTest : public ::testing::Test {
         }
         return false;
     }
+
+    static bool compression_supported(common::CompressionType compression) {
+        if (compression == common::UNCOMPRESSED) {
+            return true;
+        }
+        if (compression == common::LZ4) {
+#ifdef ENABLE_LZ4
+            return true;
+#else
+            return false;
+#endif
+        }
+        if (compression == common::GZIP) {
+#ifdef ENABLE_GZIP
+            return true;
+#else
+            return false;
+#endif
+        }
+        if (compression == common::ZSTD) {
+#ifdef ENABLE_ZSTD
+            return true;
+#else
+            return false;
+#endif
+        }
+        if (compression == common::LZMA) {
+#ifdef ENABLE_LZMA
+            return true;
+#else
+            return false;
+#endif
+        }
+        return false;
+    }
 };
 
 // Use TSFILE_BENCHMARK_PARENT_DIR to override where datasets/results are placed.
@@ -640,10 +717,14 @@ const std::string CsvReadWriteTest::kOutputParentDir =
     CsvReadWriteTest::kParentDir + "result/tsfile_read_write_cpp_v2/";
 const std::string CsvReadWriteTest::kTsFileOutputDir =
     CsvReadWriteTest::kOutputParentDir + "tsfiles_v2/";
+const std::string CsvReadWriteTest::kReadDecodedOutputDir =
+    CsvReadWriteTest::kOutputParentDir + "decoded_read_csv_v2/";
 const std::string CsvReadWriteTest::kWriteResultCsvPath =
     CsvReadWriteTest::kOutputParentDir + "write_time_tsfile_v2.csv";
+    // CsvReadWriteTest::kOutputParentDir + "write_time_tsfile_v2_2.csv";
 const std::string CsvReadWriteTest::kReadResultCsvPath =
     CsvReadWriteTest::kOutputParentDir + "read_time_tsfile_v2.csv";
+    // CsvReadWriteTest::kOutputParentDir + "read_time_tsfile_v2_2.csv";
 const std::string CsvReadWriteTest::kDeviceName = "device_1";
 const std::string CsvReadWriteTest::kMeasurementName = "sensor_1";
 
@@ -651,6 +732,7 @@ TEST_F(CsvReadWriteTest, CompareCsvReadWriteEncodings) {
     libtsfile_init();
     ensure_dir(kOutputParentDir);
     ensure_dir(kTsFileOutputDir);
+    ensure_dir(kReadDecodedOutputDir);
     if (!dir_exists(kInputParentDir)) {
         GTEST_SKIP() << "Input dataset directory not found: " << kInputParentDir;
     }
@@ -661,17 +743,20 @@ TEST_F(CsvReadWriteTest, CompareCsvReadWriteEncodings) {
 
     // Order matches subcolumn plotting scripts and adds a "LZ4" baseline:
     // plain encoding + LZ4 compressor.
-    const std::array<EncodingConfig, 10> encodings = {{
-        {common::PLAIN, "LZ4", "plain_lz4"},
-        {common::GORILLA, "GORILLA", "gorilla"},
-        {common::RLE, "RLE", "rle"},
-        {common::BITPACKING, "BITPACKING", "bitpacking"},
-        {common::DICTIONARY, "DICTIONARY", "dictionary"},
-        {common::SUBCOLUMN, "SUBCOLUMN", "subcolumn"},
-        {common::SPRINTZ, "SPRINTZ", "sprintz"},
-        {common::SPRINTZ_SUBCOLUMN, "SPRINTZ_SUBCOLUMN", "sprintz_subcolumn"},
-        {common::TS_2DIFF, "TS_2DIFF", "ts_2diff"},
-        {common::TS_2DIFF_SUBCOLUMN, "TS_2DIFF_SUBCOLUMN", "ts_2diff_subcolumn"},
+    const std::array<EncodingConfig, 13> encodings = {{
+        {common::PLAIN, common::LZ4, "LZ4", "plain_lz4"},
+        {common::PLAIN, common::GZIP, "GZIP", "plain_gzip"},
+        {common::PLAIN, common::ZSTD, "ZSTD", "plain_zstd"},
+        {common::PLAIN, common::LZMA, "LZMA", "plain_lzma"},
+        {common::GORILLA, common::UNCOMPRESSED, "GORILLA", "gorilla"},
+        {common::RLE, common::UNCOMPRESSED, "RLE", "rle"},
+        {common::BITPACKING, common::UNCOMPRESSED, "BITPACKING", "bitpacking"},
+        {common::DICTIONARY, common::UNCOMPRESSED, "DICTIONARY", "dictionary"},
+        {common::SUBCOLUMN, common::UNCOMPRESSED, "SUBCOLUMN", "subcolumn"},
+        {common::SPRINTZ, common::UNCOMPRESSED, "SPRINTZ", "sprintz"},
+        {common::SPRINTZ_SUBCOLUMN, common::UNCOMPRESSED, "SPRINTZ_SUBCOLUMN", "sprintz_subcolumn"},
+        {common::TS_2DIFF, common::UNCOMPRESSED, "TS_2DIFF", "ts_2diff"},
+        {common::TS_2DIFF_SUBCOLUMN, common::UNCOMPRESSED, "TS_2DIFF_SUBCOLUMN", "ts_2diff_subcolumn"},
     }};
 
     std::ofstream write_csv(kWriteResultCsvPath.c_str(), std::ios::out | std::ios::trunc);
@@ -686,7 +771,7 @@ TEST_F(CsvReadWriteTest, CompareCsvReadWriteEncodings) {
     write_csv_header(
         read_csv,
         {"Dataset", "Encoding Algorithm", "Read Total Time Nanos", "Read CPU Time Nanos",
-         "Read IO Time Nanos", "Points", "TsFile Size Bytes"});
+         "Read IO Time Nanos", "Decoded CSV Write Time Nanos", "Points", "TsFile Size Bytes"});
 
     for (size_t i = 0; i < dataset_files.size(); ++i) {
         DatasetProfile profile;
@@ -709,23 +794,34 @@ TEST_F(CsvReadWriteTest, CompareCsvReadWriteEncodings) {
             if (!encoding_selected(cfg.name)) {
                 continue;
             }
+            if (!compression_supported(cfg.compression)) {
+                std::cout << "[CsvReadWriteTest]   Skip unsupported compression for "
+                          << cfg.name << std::endl;
+                continue;
+            }
             const std::string tsfile_path = kTsFileOutputDir + profile.dataset_name + "_" +
                                             cfg.file_suffix + "_cpp_v2.tsfile";
             std::cout << "[CsvReadWriteTest]   Encoding=" << cfg.name
                       << ", output=" << tsfile_path << std::endl;
             const WriteBenchmarkResult write_result =
-                benchmark_write(profile, multiplier, cfg.encoding, tsfile_path);
+                benchmark_write(profile, multiplier, cfg.encoding, cfg.compression, tsfile_path);
             std::cout << "[CsvReadWriteTest]   Write done: total_ns="
                       << write_result.total_time_ns
                       << ", cpu_ns=" << write_result.cpu_time_ns
                       << ", io_ns=" << write_result.io_time_ns
                       << ", tsfile_size=" << write_result.tsfile_size_bytes
                       << std::endl;
-            const ReadBenchmarkResult read_result = benchmark_read(tsfile_path);
+            const std::string decoded_csv_path =
+                kReadDecodedOutputDir + profile.dataset_name + "_" + cfg.file_suffix +
+                "_decoded.csv";
+            const ReadBenchmarkResult read_result =
+                benchmark_read(tsfile_path, decoded_csv_path);
             std::cout << "[CsvReadWriteTest]   Read done: total_ns="
                       << read_result.total_time_ns
                       << ", cpu_ns=" << read_result.cpu_time_ns
                       << ", io_ns=" << read_result.io_time_ns
+                      << ", decoded_csv_write_ns="
+                      << read_result.decoded_csv_write_time_ns
                       << ", points=" << read_result.point_count << std::endl;
 
             write_csv << profile.dataset_name << "," << cfg.name << ","
@@ -736,7 +832,9 @@ TEST_F(CsvReadWriteTest, CompareCsvReadWriteEncodings) {
 
             read_csv << profile.dataset_name << "," << cfg.name << ","
                      << read_result.total_time_ns << "," << read_result.cpu_time_ns << ","
-                     << read_result.io_time_ns << "," << read_result.point_count << ","
+                     << read_result.io_time_ns << ","
+                     << read_result.decoded_csv_write_time_ns << ","
+                     << read_result.point_count << ","
                      << read_result.tsfile_size_bytes << '\n';
         }
     }

@@ -37,6 +37,12 @@ message("cmake using: ENABLE_LZOKAY=${ENABLE_LZOKAY}")
 option(ENABLE_ZLIB "Enable Zlib compression" ON)
 message("cmake using: ENABLE_ZLIB=${ENABLE_ZLIB}")
 
+option(ENABLE_ZSTD "Enable ZSTD compression" ON)
+message("cmake using: ENABLE_ZSTD=${ENABLE_ZSTD}")
+
+option(ENABLE_LZMA "Enable LZMA compression" ON)
+message("cmake using: ENABLE_LZMA=${ENABLE_LZMA}")
+
 message("Running in src directory")
 if (${COV_ENABLED})
     add_compile_options(-fprofile-arcs -ftest-coverage)
@@ -118,6 +124,14 @@ endif()
 
 if (ENABLE_ZLIB)
     list(APPEND COMPRESSION_LIBS zlibstatic)
+endif()
+
+if (ENABLE_ZSTD)
+    list(APPEND COMPRESSION_LIBS ${ZSTD_LIBRARY})
+endif()
+
+if (ENABLE_LZMA)
+    list(APPEND COMPRESSION_LIBS ${LZMA_LIBRARY})
 endif()
 
 message("Compression libraries: ${COMPRESSION_LIBS}")

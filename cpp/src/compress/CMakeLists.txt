@@ -50,6 +50,16 @@ if(ENABLE_ZLIB)
     list(APPEND HEADERS "gzip_compressor.h")
 endif()
 
+if(ENABLE_ZSTD)
+    list(APPEND compress_SRC_LIST "zstd_compressor.cc")
+    list(APPEND HEADERS "zstd_compressor.h")
+endif()
+
+if(ENABLE_LZMA)
+    list(APPEND compress_SRC_LIST "lzma_compressor.cc")
+    list(APPEND HEADERS "lzma_compressor.h")
+endif()
+
 # Add common headers (always copied)
 file(GLOB COMMON_HEADERS "*.h")
 foreach(header IN LISTS HEADERS)
