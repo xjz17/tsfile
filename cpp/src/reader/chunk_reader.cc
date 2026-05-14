@@ -19,10 +19,12 @@
 
 #include "chunk_reader.h"
 
+#include <chrono>
 #include <limits>
 
 #include "compress/compressor_factory.h"
 #include "encoding/decoder_factory.h"
+#include "read_path_cpu_stats.h"
 
 using namespace common;
 namespace storage {
@@ -172,8 +174,13 @@ int ChunkReader::get_next_page(TsBlock* ret_tsblock, Filter* oneshoot_filter,
         (oneshoot_filter != nullptr ? oneshoot_filter : time_filter_);
 
     if (prev_page_not_finish()) {
+        const auto decode_cpu_t0 = std::chrono::steady_clock::now();
         ret = decode_tv_buf_into_tsblock_by_datatype(time_in_, value_in_,
                                                      ret_tsblock, filter, &pa);
+        const auto decode_cpu_t1 = std::chrono::steady_clock::now();
+        add_read_path_cpu_ns(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                 decode_cpu_t1 - decode_cpu_t0)
+                                 .count());
         if (ret == E_OVERFLOW) {
             ret = E_OK;
         } else {
@@ -292,6 +299,8 @@ int ChunkReader::decode_cur_page_data(TsBlock*& ret_tsblock, Filter* filter,
         }
     }
 
+    const auto decode_cpu_t0 = std::chrono::steady_clock::now();
+
     char* compressed_buf = nullptr;
     char* uncompressed_buf = nullptr;
     uint32_t compressed_buf_size = 0;  // cppcheck-suppress unreadVariable
@@ -375,6 +384,10 @@ int ChunkReader::decode_cur_page_data(TsBlock*& ret_tsblock, Filter* filter,
             ret = E_OK;
         }
     }
+    const auto decode_cpu_t1 = std::chrono::steady_clock::now();
+    add_read_path_cpu_ns(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                             decode_cpu_t1 - decode_cpu_t0)
+                             .count());
     return ret;
 }
 
@@ -544,8 +557,13 @@ int ChunkReader::get_next_page(TsBlock* ret_tsblock, Filter* oneshoot_filter,
     }
 
     if (prev_page_not_finish()) {
+        const auto decode_cpu_t0 = std::chrono::steady_clock::now();
         ret = decode_tv_buf_into_tsblock_by_datatype(time_in_, value_in_,
                                                      ret_tsblock, filter, &pa);
+        const auto decode_cpu_t1 = std::chrono::steady_clock::now();
+        add_read_path_cpu_ns(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                 decode_cpu_t1 - decode_cpu_t0)
+                                 .count());
         if (ret == E_OVERFLOW) {
             ret = E_OK;
         } else {

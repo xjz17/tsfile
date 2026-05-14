@@ -19,10 +19,12 @@
 
 #include "aligned_chunk_reader.h"
 
+#include <chrono>
 #include <limits>
 
 #include "compress/compressor_factory.h"
 #include "encoding/decoder_factory.h"
+#include "read_path_cpu_stats.h"
 
 using namespace common;
 namespace storage {
@@ -382,6 +384,8 @@ int AlignedChunkReader::decode_cur_time_page_data() {
         }
     }
 
+    const auto decode_cpu_t0 = std::chrono::steady_clock::now();
+
     char* time_compressed_buf = nullptr;
     char* time_uncompressed_buf = nullptr;
     uint32_t time_compressed_buf_size = 0;
@@ -426,6 +430,10 @@ int AlignedChunkReader::decode_cur_time_page_data() {
                        time_buf_size);
 #endif
     time_in_.wrap_from(time_uncompressed_buf_, time_uncompressed_buf_size);
+    const auto decode_cpu_t1 = std::chrono::steady_clock::now();
+    add_read_path_cpu_ns(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                             decode_cpu_t1 - decode_cpu_t0)
+                             .count());
     return ret;
 }
 
@@ -456,6 +464,8 @@ int AlignedChunkReader::decode_cur_value_page_data() {
         value_in_.wrap_from(value_buf, 0);
         return E_OK;
     }
+
+    const auto decode_cpu_t0 = std::chrono::steady_clock::now();
 
     // Step 2: do uncompress
     if (IS_SUCC(ret)) {
@@ -505,14 +515,23 @@ int AlignedChunkReader::decode_cur_value_page_data() {
                        value_buf_size);
 #endif
     value_in_.wrap_from(value_buf, value_buf_size);
+    const auto decode_cpu_t1 = std::chrono::steady_clock::now();
+    add_read_path_cpu_ns(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                             decode_cpu_t1 - decode_cpu_t0)
+                             .count());
     return ret;
 }
 
 int AlignedChunkReader::decode_time_value_buf_into_tsblock(
     TsBlock*& ret_tsblock, Filter* filter, common::PageArena* pa) {
     int ret = common::E_OK;
+    const auto decode_cpu_t0 = std::chrono::steady_clock::now();
     ret = decode_tv_buf_into_tsblock_by_datatype(time_in_, value_in_,
                                                  ret_tsblock, filter, pa);
+    const auto decode_cpu_t1 = std::chrono::steady_clock::now();
+    add_read_path_cpu_ns(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                             decode_cpu_t1 - decode_cpu_t0)
+                             .count());
     // if we return during @decode_tv_buf_into_tsblock, we should keep
     // @uncompressed_buf_ valid until all TV pairs are decoded.
     if (ret != E_OVERFLOW) {

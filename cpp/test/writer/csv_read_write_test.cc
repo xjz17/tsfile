@@ -42,6 +42,7 @@
 #include "file/read_file.h"
 #include "file/write_file.h"
 #include "reader/qds_without_timegenerator.h"
+#include "reader/read_path_cpu_stats.h"
 #include "reader/tsfile_reader.h"
 #include "writer/tsfile_writer.h"
 
@@ -543,6 +544,7 @@ class CsvReadWriteTest : public ::testing::Test {
                 benchmark_drop_file_cache(tsfile_path);
             }
             ReadFile::reset_io_stats();
+            reset_read_path_cpu_stats();
             TsFileReader reader;
             if (reader.open(tsfile_path) != common::E_OK) {
                 ADD_FAILURE() << "Failed to open tsfile reader: " << tsfile_path;
@@ -560,10 +562,8 @@ class CsvReadWriteTest : public ::testing::Test {
             const auto t0 = std::chrono::steady_clock::now();
             bool has_next = false;
             int64_t current_points = 0;
-            int64_t cpu_ns = 0;
             std::vector<int64_t> decoded_values;
             do {
-                const auto cpu_t0 = std::chrono::steady_clock::now();
                 const int next_rc = qds->next(has_next);
                 if (IS_SUCC(next_rc) && has_next) {
                     RowRecord *record = qds->get_row_record();
@@ -585,9 +585,6 @@ class CsvReadWriteTest : public ::testing::Test {
                         }
                     }
                 }
-                const auto cpu_t1 = std::chrono::steady_clock::now();
-                cpu_ns +=
-                    std::chrono::duration_cast<std::chrono::nanoseconds>(cpu_t1 - cpu_t0).count();
                 if (IS_FAIL(next_rc) || !has_next) {
                     break;
                 }
@@ -605,7 +602,7 @@ class CsvReadWriteTest : public ::testing::Test {
                 write_decoded_values_csv(decoded_csv_path, decoded_values);
 
             total_total_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
-            total_cpu_ns += cpu_ns;
+            total_cpu_ns += get_read_path_cpu_ns();
             total_io_ns += io_stats.read_time_ns + extra_io_ns;
             total_decoded_csv_write_ns += decoded_csv_write_ns;
             points = current_points;
