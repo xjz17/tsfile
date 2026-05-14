@@ -157,9 +157,9 @@ class CsvReadWriteTest : public ::testing::Test {
     static WriteIoConfig load_write_io_config() {
         WriteIoConfig cfg;
         cfg.cold_io = env_bool("TSFILE_BENCHMARK_COLD_IO", true);
-        cfg.write_o_sync = env_bool("TSFILE_WRITE_O_SYNC", cfg.cold_io);
-        // Smaller chunk => more flush() calls => more write/fsync syscalls (higher IO share in benchmark).
-        cfg.fsync_chunk_kb = env_int64("TSFILE_WRITE_FSYNC_CHUNK_KB", cfg.cold_io ? 16 : 0);
+        cfg.write_o_sync = env_bool("TSFILE_WRITE_O_SYNC", false);
+        // 64
+        cfg.fsync_chunk_kb = env_int64("TSFILE_WRITE_FSYNC_CHUNK_KB", 0);
         if (cfg.fsync_chunk_kb < 0) {
             cfg.fsync_chunk_kb = 0;
         }
@@ -171,9 +171,10 @@ class CsvReadWriteTest : public ::testing::Test {
         ReadIoConfig cfg;
         cfg.cold_io = env_bool("TSFILE_BENCHMARK_READ_COLD_IO", true);
         cfg.drop_cache_before_read =
-            env_bool("TSFILE_BENCHMARK_READ_DROP_CACHE", cfg.cold_io);
+            env_bool("TSFILE_BENCHMARK_READ_DROP_CACHE", true);
+        // 2
         cfg.extra_scan_rounds = env_int64(
-            "TSFILE_BENCHMARK_READ_EXTRA_SCAN_ROUNDS", cfg.cold_io ? 2 : 0);
+            "TSFILE_BENCHMARK_READ_EXTRA_SCAN_ROUNDS", cfg.cold_io ? 0 : 0);
         if (cfg.extra_scan_rounds < 0) {
             cfg.extra_scan_rounds = 0;
         }
@@ -460,19 +461,20 @@ class CsvReadWriteTest : public ::testing::Test {
             int64_t pending_chunk_bytes = 0;
             const auto iter_begin = std::chrono::steady_clock::now();
             std::string line;
-            while (std::getline(in, line)) {
+            while (true) {
                 const auto read_t0 = std::chrono::steady_clock::now();
-                const std::string value = first_column(line);
-                int64_t scaled_value = 0;
-                if (!value.empty()) {
-                    scaled_value = to_scaled_int64(value, multiplier);
+                if (!std::getline(in, line)) {
+                    break;
                 }
                 const auto read_t1 = std::chrono::steady_clock::now();
                 dataset_read_ns +=
                     std::chrono::duration_cast<std::chrono::nanoseconds>(read_t1 - read_t0).count();
+
+                const std::string value = first_column(line);
                 if (value.empty()) {
                     continue;
                 }
+                const int64_t scaled_value = to_scaled_int64(value, multiplier);
 
                 TsRecord record(ts++, kDeviceName);
                 record.add_point(kMeasurementName, scaled_value);
@@ -505,7 +507,8 @@ class CsvReadWriteTest : public ::testing::Test {
                 return result;
             }
             const auto stats = WriteFile::get_io_stats();
-            io_ns = stats.write_time_ns + stats.fsync_time_ns + extra_io_ns;
+            // io_ns = stats.write_time_ns + stats.fsync_time_ns + extra_io_ns;
+            io_ns = stats.write_time_ns;
             const auto iter_end = std::chrono::steady_clock::now();
 
             total_dataset_read_ns += dataset_read_ns;
@@ -560,31 +563,34 @@ class CsvReadWriteTest : public ::testing::Test {
             int64_t cpu_ns = 0;
             std::vector<int64_t> decoded_values;
             do {
-                if (IS_FAIL(qds->next(has_next)) || !has_next) {
-                    break;
-                }
                 const auto cpu_t0 = std::chrono::steady_clock::now();
-                RowRecord *record = qds->get_row_record();
-                if (record != nullptr && record->get_fields() != nullptr &&
-                    record->get_fields()->size() > 1) {
-                    Field *value_field = record->get_field(1);
-                    if (value_field != nullptr &&
-                        value_field->type_ != common::NULL_TYPE) {
-                        if (value_field->type_ == common::INT64 ||
-                            value_field->type_ == common::TIMESTAMP) {
-                            decoded_values.push_back(value_field->get_value<int64_t>());
-                            ++current_points;
-                        } else if (value_field->type_ == common::INT32 ||
-                                   value_field->type_ == common::DATE) {
-                            decoded_values.push_back(
-                                static_cast<int64_t>(value_field->get_value<int32_t>()));
-                            ++current_points;
+                const int next_rc = qds->next(has_next);
+                if (IS_SUCC(next_rc) && has_next) {
+                    RowRecord *record = qds->get_row_record();
+                    if (record != nullptr && record->get_fields() != nullptr &&
+                        record->get_fields()->size() > 1) {
+                        Field *value_field = record->get_field(1);
+                        if (value_field != nullptr &&
+                            value_field->type_ != common::NULL_TYPE) {
+                            if (value_field->type_ == common::INT64 ||
+                                value_field->type_ == common::TIMESTAMP) {
+                                decoded_values.push_back(value_field->get_value<int64_t>());
+                                ++current_points;
+                            } else if (value_field->type_ == common::INT32 ||
+                                       value_field->type_ == common::DATE) {
+                                decoded_values.push_back(
+                                    static_cast<int64_t>(value_field->get_value<int32_t>()));
+                                ++current_points;
+                            }
                         }
                     }
                 }
                 const auto cpu_t1 = std::chrono::steady_clock::now();
                 cpu_ns +=
                     std::chrono::duration_cast<std::chrono::nanoseconds>(cpu_t1 - cpu_t0).count();
+                if (IS_FAIL(next_rc) || !has_next) {
+                    break;
+                }
             } while (true);
             int64_t extra_io_ns = 0;
             if (io_cfg.extra_scan_rounds > 0) {
