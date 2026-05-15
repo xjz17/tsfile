@@ -57,22 +57,28 @@
 namespace {
 
 constexpr const char kDatasetDir[] = "/home/allen/xjz17/subcolumn/dataset_tsfile";
+// constexpr const char kDatasetDir[] = "/mnt/d/github/xjz17/subcolumn/dataset_tsfile";
 
 constexpr const char kBinOutputDir[] =
     "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/bins";
+    // "/mnt/d/github/xjz17/subcolumn/result/encoder_compress_bin/bins";
 
 constexpr const char kWriteMetricsCsvPath[] =
     "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/"
+    // "/mnt/d/github/xjz17/subcolumn/result/encoder_compress_bin/"
     "encoder_compress_roundtrip_write_metrics.csv";
 
 constexpr const char kReadMetricsCsvPath[] =
     "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/"
+    // "/mnt/d/github/xjz17/subcolumn/result/encoder_compress_bin/"
     "encoder_compress_roundtrip_read_metrics.csv";
 
 constexpr const char kDecodedCsvDir[] =
     "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/decoded_csv";
+    // "/mnt/d/github/xjz17/subcolumn/result/encoder_compress_bin/decoded_csv";
 
-constexpr int kCodecBenchTimingRepeats = 10;
+// constexpr int kCodecBenchTimingRepeats = 10;
+constexpr int kCodecBenchTimingRepeats = 50;
 
 constexpr int kMaxDecimalPrecision = 8;
 
