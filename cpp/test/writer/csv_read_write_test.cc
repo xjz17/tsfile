@@ -36,6 +36,20 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#if defined(_WIN32)
+#include <direct.h>
+#endif
+
+namespace {
+int tsfile_test_mkdir(const char *path) {
+#if defined(_WIN32)
+    return ::_mkdir(path);
+#else
+    return ::mkdir(path, 0755);
+#endif
+}
+}  // namespace
+
 #include "common/schema.h"
 #include "common/global.h"
 #include "common/tsfile_common.h"
@@ -401,12 +415,12 @@ class CsvReadWriteTest : public ::testing::Test {
             cur.push_back(c);
             if (c == '/' || c == '\\') {
                 if (!cur.empty() && !dir_exists(cur)) {
-                    (void)::mkdir(cur.c_str(), 0755);
+                    (void)tsfile_test_mkdir(cur.c_str());
                 }
             }
         }
         if (!dir_exists(cur)) {
-            (void)::mkdir(cur.c_str(), 0755);
+            (void)tsfile_test_mkdir(cur.c_str());
         }
     }
 
