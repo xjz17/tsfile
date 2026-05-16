@@ -71,40 +71,38 @@ int tsfile_test_mkdir(const char *path) {
 namespace {
 
 // constexpr const char kDatasetDir[] = "/home/allen/xjz17/subcolumn/dataset_tsfile";
-// constexpr const char kDatasetDir[] = "/mnt/d/github/xjz17/subcolumn/dataset_tsfile";
-// constexpr const char kDatasetDir[] = "/mnt/e/temp/dataset_tsfile";
-// constexpr const char kDatasetDir[] = "D:/github/xjz17/subcolumn/dataset_tsfile";
-constexpr const char kDatasetDir[] = "E:/temp/dataset_tsfile";
+constexpr const char kDatasetDir[] = "D:/github/xjz17/subcolumn/dataset_tsfile";
+// constexpr const char kDatasetDir[] = "E:/xjz/subcolumn/dataset_tsfile";
 
 constexpr const char kBinOutputDir[] =
     // "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/bins";
-    // "/mnt/d/github/xjz17/subcolumn/result/encoder_compress_bin/bins";
-    // "/mnt/e/temp/encoder_compress_bin/bins";
-    // "D:/github/xjz17/subcolumn/result/encoder_compress_bin/bins";
-    "E:/temp/encoder_compress_bin/bins";
+    "D:/github/xjz17/subcolumn/result/encoder_compress_bin/bins";
+    // "E:/xjz/subcolumn/result/encoder_compress_bin/bins";
 
 constexpr const char kWriteMetricsCsvPath[] =
     // "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/"
-    // "/mnt/d/github/xjz17/subcolumn/result/encoder_compress_bin/"
-    "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
     // "encoder_compress_roundtrip_write_metrics.csv";
 
-    "encoder_compress_roundtrip_write_metrics2.csv";
+    "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
+    "encoder_compress_roundtrip_write_metrics1.csv";
+
+    // "E:/xjz/subcolumn/result/encoder_compress_bin/"
+    // "encoder_compress_roundtrip_write_metrics2.csv";
 
 constexpr const char kReadMetricsCsvPath[] =
     // "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/"
-    // "/mnt/d/github/xjz17/subcolumn/result/encoder_compress_bin/"
-    "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
     // "encoder_compress_roundtrip_read_metrics.csv";
 
-    "encoder_compress_roundtrip_read_metrics2.csv";
+    "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
+    "encoder_compress_roundtrip_read_metrics1.csv";
+
+    // "E:/xjz/subcolumn/result/encoder_compress_bin/"
+    // "encoder_compress_roundtrip_read_metrics2.csv";
 
 constexpr const char kDecodedCsvDir[] =
     // "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/decoded_csv";
-    // "/mnt/d/github/xjz17/subcolumn/result/encoder_compress_bin/decoded_csv";
-    // "/mnt/e/temp/encoder_compress_bin/decoded_csv";
-    // "D:/github/xjz17/subcolumn/result/encoder_compress_bin/decoded_csv";
-    "E:/temp/encoder_compress_bin/decoded_csv";
+    "D:/github/xjz17/subcolumn/result/encoder_compress_bin/decoded_csv";
+    // "E:/xjz/subcolumn/result/encoder_compress_bin/decoded_csv";
 
 constexpr int kCodecBenchTimingRepeats = 50;
 // constexpr int kCodecBenchTimingRepeats = 100;
