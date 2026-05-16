@@ -56,12 +56,14 @@
 
 namespace {
 
-constexpr const char kDatasetDir[] = "/home/allen/xjz17/subcolumn/dataset_tsfile";
+// constexpr const char kDatasetDir[] = "/home/allen/xjz17/subcolumn/dataset_tsfile";
 // constexpr const char kDatasetDir[] = "/mnt/d/github/xjz17/subcolumn/dataset_tsfile";
+constexpr const char kDatasetDir[] = "/mnt/e/temp/dataset_tsfile";
 
 constexpr const char kBinOutputDir[] =
-    "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/bins";
+    // "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/bins";
     // "/mnt/d/github/xjz17/subcolumn/result/encoder_compress_bin/bins";
+    "/mnt/e/temp/encoder_compress_bin/bins";
 
 constexpr const char kWriteMetricsCsvPath[] =
     "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/"
@@ -74,15 +76,19 @@ constexpr const char kReadMetricsCsvPath[] =
     "encoder_compress_roundtrip_read_metrics.csv";
 
 constexpr const char kDecodedCsvDir[] =
-    "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/decoded_csv";
+    // "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/decoded_csv";
     // "/mnt/d/github/xjz17/subcolumn/result/encoder_compress_bin/decoded_csv";
+    "/mnt/e/temp/encoder_compress_bin/decoded_csv";
 
-// constexpr int kCodecBenchTimingRepeats = 10;
-constexpr int kCodecBenchTimingRepeats = 50;
+// constexpr int kCodecBenchTimingRepeats = 50;
+constexpr int kCodecBenchTimingRepeats = 100;
 
 constexpr int kMaxDecimalPrecision = 8;
 
 constexpr uint32_t kByteStreamPageSize = 1024 * 1024;
+
+constexpr size_t kCompressedBinIoChunkBytes = 64 * 1024;
+// constexpr size_t kCompressedBinIoChunkBytes = 1 * 128;
 
 std::string trim(const std::string &s) {
     size_t start = 0;
@@ -194,51 +200,18 @@ std::vector<std::string> list_csv_files(const std::string &dir_in) {
     return files;
 }
 
-/**
- * Max decimal precision scan only (untimed). Mirrors the precision information gathered
- * before {@code csv_read_write_test.cc} {@code benchmark_write}; not included in Dataset
- * Read nanos.
- */
-static bool scan_max_decimal_precision_untimed(const std::string &dataset_file,
-                                               int &max_decimal_precision) {
-    std::ifstream in(dataset_file.c_str());
-    if (!in.good()) {
-        return false;
-    }
-    max_decimal_precision = 0;
-    std::string line;
-    while (std::getline(in, line)) {
-        const std::string value = first_column(line);
-        if (value.empty()) {
-            continue;
-        }
-        max_decimal_precision =
-            std::max(max_decimal_precision, decimal_precision(value));
-    }
-    return !in.bad();
-}
-
-/**
- * Fill scaled int64 column; {@code out_dataset_read_ns} matches
- * {@code csv_read_write_test.cc} {@code benchmark_write}: sum of per-line
- * {@code std::getline} intervals only (parsing happens outside each interval).
- */
 static bool load_scaled_int64_column_csv_rw_dataset_read_timing(
     const std::string &dataset_file,
     std::vector<int64_t> &out_values,
     int &max_decimal_precision,
     int64_t *out_dataset_read_ns) {
-    if (!scan_max_decimal_precision_untimed(dataset_file, max_decimal_precision)) {
-        return false;
-    }
-    const int64_t mult =
-        multiplier_for_precision(std::min(max_decimal_precision, kMaxDecimalPrecision));
-
     std::ifstream in(dataset_file.c_str());
     if (!in.good()) {
         return false;
     }
-    out_values.clear();
+    std::vector<std::string> column_tokens;
+    column_tokens.reserve(1024);
+    max_decimal_precision = 0;
     std::string line;
     int64_t dataset_read_ns = 0;
     while (true) {
@@ -255,19 +228,27 @@ static bool load_scaled_int64_column_csv_rw_dataset_read_timing(
         if (value.empty()) {
             continue;
         }
-        out_values.push_back(to_scaled_int64(value, mult));
+        max_decimal_precision =
+            std::max(max_decimal_precision, decimal_precision(value));
+        column_tokens.push_back(value);
     }
     if (out_dataset_read_ns != nullptr) {
         *out_dataset_read_ns = dataset_read_ns;
     }
-    return !in.bad();
+    if (in.bad()) {
+        return false;
+    }
+
+    const int64_t mult =
+        multiplier_for_precision(std::min(max_decimal_precision, kMaxDecimalPrecision));
+    out_values.clear();
+    out_values.reserve(column_tokens.size());
+    for (const std::string &raw : column_tokens) {
+        out_values.push_back(to_scaled_int64(raw, mult));
+    }
+    return true;
 }
 
-/**
- * Decoded-value CSV timing matches {@code csv_read_write_test.cc}
- * {@code write_decoded_values_csv} (codec benchmark only writes aggregate rows).
- * Interval is {@code ofstream} construction through last formatted write; flush is outside.
- */
 static bool write_decoded_values_csv_timed(const std::string &csv_path,
                                            const std::vector<int64_t> &values,
                                            int64_t *out_write_ns) {
@@ -276,7 +257,6 @@ static bool write_decoded_values_csv_timed(const std::string &csv_path,
     if (!out.good()) {
         return false;
     }
-    out << "value\n";
     for (size_t i = 0; i < values.size(); ++i) {
         out << values[i] << '\n';
     }
@@ -301,7 +281,6 @@ void byte_stream_to_vector(common::ByteStream &s, std::vector<uint8_t> &out) {
     }
 }
 
-/** Same 13-way parallel layout as {@code csv_read_write_test.cc} CompareCsvReadWriteEncodings. */
 struct BenchParallelConfig {
     common::TSEncoding encoding;
     common::CompressionType compression;
@@ -362,7 +341,6 @@ const char *compression_label(common::CompressionType c) {
     return "UNKNOWN_COMPRESSION";
 }
 
-/** PLAIN+INT64 row bytes match codec benchmark: compress contiguous int64 buffer. */
 static bool plain_codec_uses_raw_int64_compress_input(common::CompressionType c) {
     switch (c) {
 #ifdef ENABLE_LZ4
@@ -781,10 +759,17 @@ bool roundtrip_once(const std::string &dataset_csv_path,
         if (!bout.good()) {
             return false;
         }
-        bout.write(compressed_owned.data(),
-                   static_cast<std::streamsize>(compressed_owned.size()));
-        if (!bout.good()) {
-            return false;
+        const char *wp = compressed_owned.data();
+        size_t wremain = compressed_owned.size();
+        while (wremain > 0) {
+            const size_t n =
+                std::min(kCompressedBinIoChunkBytes, wremain);
+            bout.write(wp, static_cast<std::streamsize>(n));
+            if (!bout.good()) {
+                return false;
+            }
+            wp += n;
+            wremain -= n;
         }
     }
     const auto t_bw1 = std::chrono::steady_clock::now();
@@ -802,9 +787,24 @@ bool roundtrip_once(const std::string &dataset_csv_path,
             return false;
         }
         bin.seekg(0);
-        file_blob.resize(static_cast<size_t>(sz));
-        bin.read(file_blob.data(), sz);
-        if (!bin.good()) {
+        const size_t total = static_cast<size_t>(sz);
+        file_blob.resize(total);
+        size_t roff = 0;
+        while (roff < total) {
+            const size_t want =
+                std::min(kCompressedBinIoChunkBytes, total - roff);
+            bin.read(file_blob.data() + roff,
+                     static_cast<std::streamsize>(want));
+            if (bin.bad()) {
+                return false;
+            }
+            const std::streamsize got = bin.gcount();
+            if (got == 0) {
+                return false;
+            }
+            roff += static_cast<size_t>(got);
+        }
+        if (roff != total) {
             return false;
         }
     }
@@ -1005,6 +1005,12 @@ TEST(DatasetEncoderCompressBinBench, EncodeCompressBinRoundtripCsv) {
             size_t enc_b = 0, cmp_b = 0;
             size_t points = 0;
             int max_prec = 0;
+            std::fprintf(stderr,
+                         "[EncodeCompressBinRoundtripCsv] dataset=%s path=%s algorithm=%s "
+                         "(%s + %s)\n",
+                         dataset_name.c_str(), path.c_str(), cfg.algo_csv_name,
+                         encoding_label(cfg.encoding), compression_label(cfg.compression));
+            std::fflush(stderr);
             if (!benchmark_parallel_row(path, dataset_name, cfg, points, max_prec, avg_dr,
                                         avg_enc, avg_enc_flush, avg_cmp, avg_bw, avg_br,
                                         avg_unc,
