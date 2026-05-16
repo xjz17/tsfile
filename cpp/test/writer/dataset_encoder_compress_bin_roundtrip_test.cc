@@ -33,6 +33,20 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#if defined(_WIN32)
+#include <direct.h>
+#endif
+
+namespace {
+int tsfile_test_mkdir(const char *path) {
+#if defined(_WIN32)
+    return ::_mkdir(path);
+#else
+    return ::mkdir(path, 0755);
+#endif
+}
+}  // namespace
+
 #include "common/allocator/byte_stream.h"
 #include "common/db_common.h"
 #include "common/global.h"
@@ -58,30 +72,42 @@ namespace {
 
 // constexpr const char kDatasetDir[] = "/home/allen/xjz17/subcolumn/dataset_tsfile";
 // constexpr const char kDatasetDir[] = "/mnt/d/github/xjz17/subcolumn/dataset_tsfile";
-constexpr const char kDatasetDir[] = "/mnt/e/temp/dataset_tsfile";
+// constexpr const char kDatasetDir[] = "/mnt/e/temp/dataset_tsfile";
+// constexpr const char kDatasetDir[] = "D:/github/xjz17/subcolumn/dataset_tsfile";
+constexpr const char kDatasetDir[] = "E:/temp/dataset_tsfile";
 
 constexpr const char kBinOutputDir[] =
     // "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/bins";
     // "/mnt/d/github/xjz17/subcolumn/result/encoder_compress_bin/bins";
-    "/mnt/e/temp/encoder_compress_bin/bins";
+    // "/mnt/e/temp/encoder_compress_bin/bins";
+    // "D:/github/xjz17/subcolumn/result/encoder_compress_bin/bins";
+    "E:/temp/encoder_compress_bin/bins";
 
 constexpr const char kWriteMetricsCsvPath[] =
-    "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/"
+    // "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/"
     // "/mnt/d/github/xjz17/subcolumn/result/encoder_compress_bin/"
-    "encoder_compress_roundtrip_write_metrics.csv";
+    "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
+    // "encoder_compress_roundtrip_write_metrics.csv";
+
+    "encoder_compress_roundtrip_write_metrics2.csv";
 
 constexpr const char kReadMetricsCsvPath[] =
-    "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/"
+    // "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/"
     // "/mnt/d/github/xjz17/subcolumn/result/encoder_compress_bin/"
-    "encoder_compress_roundtrip_read_metrics.csv";
+    "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
+    // "encoder_compress_roundtrip_read_metrics.csv";
+
+    "encoder_compress_roundtrip_read_metrics2.csv";
 
 constexpr const char kDecodedCsvDir[] =
     // "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/decoded_csv";
     // "/mnt/d/github/xjz17/subcolumn/result/encoder_compress_bin/decoded_csv";
-    "/mnt/e/temp/encoder_compress_bin/decoded_csv";
+    // "/mnt/e/temp/encoder_compress_bin/decoded_csv";
+    // "D:/github/xjz17/subcolumn/result/encoder_compress_bin/decoded_csv";
+    "E:/temp/encoder_compress_bin/decoded_csv";
 
-// constexpr int kCodecBenchTimingRepeats = 50;
-constexpr int kCodecBenchTimingRepeats = 100;
+constexpr int kCodecBenchTimingRepeats = 50;
+// constexpr int kCodecBenchTimingRepeats = 100;
 
 constexpr int kMaxDecimalPrecision = 8;
 
@@ -165,12 +191,12 @@ void ensure_dir_recursive(const std::string &path) {
         cur.push_back(c);
         if (c == '/') {
             if (!cur.empty() && cur != "/" && !dir_exists(cur)) {
-                (void)::mkdir(cur.c_str(), 0755);
+                (void)tsfile_test_mkdir(cur.c_str());
             }
         }
     }
     if (!dir_exists(cur)) {
-        (void)::mkdir(cur.c_str(), 0755);
+        (void)tsfile_test_mkdir(cur.c_str());
     }
 }
 
@@ -205,6 +231,9 @@ static bool load_scaled_int64_column_csv_rw_dataset_read_timing(
     std::vector<int64_t> &out_values,
     int &max_decimal_precision,
     int64_t *out_dataset_read_ns) {
+    // Time window aligned with write_decoded_values_csv_timed: stream open +
+    // per-row text I/O and light line handling (no strtod / scaled int64 parse).
+    const auto read_t0 = std::chrono::steady_clock::now();
     std::ifstream in(dataset_file.c_str());
     if (!in.good()) {
         return false;
@@ -213,17 +242,7 @@ static bool load_scaled_int64_column_csv_rw_dataset_read_timing(
     column_tokens.reserve(1024);
     max_decimal_precision = 0;
     std::string line;
-    int64_t dataset_read_ns = 0;
-    while (true) {
-        const auto read_t0 = std::chrono::steady_clock::now();
-        if (!std::getline(in, line)) {
-            break;
-        }
-        const auto read_t1 = std::chrono::steady_clock::now();
-        dataset_read_ns +=
-            std::chrono::duration_cast<std::chrono::nanoseconds>(read_t1 - read_t0)
-                .count();
-
+    while (std::getline(in, line)) {
         const std::string value = first_column(line);
         if (value.empty()) {
             continue;
@@ -232,6 +251,10 @@ static bool load_scaled_int64_column_csv_rw_dataset_read_timing(
             std::max(max_decimal_precision, decimal_precision(value));
         column_tokens.push_back(value);
     }
+    const auto read_t1 = std::chrono::steady_clock::now();
+    const int64_t dataset_read_ns =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(read_t1 - read_t0)
+            .count();
     if (out_dataset_read_ns != nullptr) {
         *out_dataset_read_ns = dataset_read_ns;
     }
