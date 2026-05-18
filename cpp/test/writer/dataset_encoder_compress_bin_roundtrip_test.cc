@@ -71,41 +71,40 @@ int tsfile_test_mkdir(const char *path) {
 namespace {
 
 // constexpr const char kDatasetDir[] = "/home/allen/xjz17/subcolumn/dataset_tsfile";
-constexpr const char kDatasetDir[] = "D:/github/xjz17/subcolumn/dataset_tsfile";
-// constexpr const char kDatasetDir[] = "E:/xjz/subcolumn/dataset_tsfile";
+// constexpr const char kDatasetDir[] = "D:/github/xjz17/subcolumn/dataset_tsfile";
+constexpr const char kDatasetDir[] = "E:/xjz/dataset_tsfile";
 
 constexpr const char kBinOutputDir[] =
     // "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/bins";
-    "D:/github/xjz17/subcolumn/result/encoder_compress_bin/bins";
-    // "E:/xjz/subcolumn/result/encoder_compress_bin/bins";
+    // "D:/github/xjz17/subcolumn/result/encoder_compress_bin/bins";
+    "E:/xjz/encoder_compress_bin/bins";
 
 constexpr const char kWriteMetricsCsvPath[] =
     // "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/"
     // "encoder_compress_roundtrip_write_metrics.csv";
 
-    "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
-    "encoder_compress_roundtrip_write_metrics1.csv";
+    // "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
+    // "encoder_compress_roundtrip_write_metrics1.csv";
 
-    // "E:/xjz/subcolumn/result/encoder_compress_bin/"
-    // "encoder_compress_roundtrip_write_metrics2.csv";
+    "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
+    "encoder_compress_roundtrip_write_metrics2.csv";
 
 constexpr const char kReadMetricsCsvPath[] =
     // "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/"
     // "encoder_compress_roundtrip_read_metrics.csv";
 
-    "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
-    "encoder_compress_roundtrip_read_metrics1.csv";
+    // "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
+    // "encoder_compress_roundtrip_read_metrics1.csv";
 
-    // "E:/xjz/subcolumn/result/encoder_compress_bin/"
-    // "encoder_compress_roundtrip_read_metrics2.csv";
+    "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
+    "encoder_compress_roundtrip_read_metrics2.csv";
 
 constexpr const char kDecodedCsvDir[] =
     // "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/decoded_csv";
-    "D:/github/xjz17/subcolumn/result/encoder_compress_bin/decoded_csv";
-    // "E:/xjz/subcolumn/result/encoder_compress_bin/decoded_csv";
+    // "D:/github/xjz17/subcolumn/result/encoder_compress_bin/decoded_csv";
+    "E:/xjz/encoder_compress_bin/decoded_csv";
 
 constexpr int kCodecBenchTimingRepeats = 50;
-// constexpr int kCodecBenchTimingRepeats = 100;
 
 constexpr int kMaxDecimalPrecision = 8;
 
@@ -1019,7 +1018,33 @@ TEST(DatasetEncoderCompressBinBench, EncodeCompressBinRoundtripCsv) {
 
     for (const std::string &path : csv_paths) {
         const std::string dataset_name = basename_no_ext(path);
-        for (const BenchParallelConfig &cfg : configs) {
+        for (size_t cfg_idx = 0; cfg_idx < configs.size(); ++cfg_idx) {
+            const BenchParallelConfig &cfg = configs[cfg_idx];
+            // First algorithm per dataset (e.g. LZ4 when enabled): cold-start biases IO /
+            // cache. Run one full round for warmup; do not record CSV for that run.
+            if (cfg_idx == 0) {
+                size_t warm_points = 0;
+                int warm_max_prec = 0;
+                int64_t warm_dr = 0, warm_enc = 0, warm_enc_flush = 0, warm_cmp = 0;
+                int64_t warm_bw = 0, warm_br = 0;
+                int64_t warm_unc = 0, warm_dec = 0, warm_csv = 0;
+                size_t warm_enc_b = 0, warm_cmp_b = 0;
+                std::fprintf(stderr,
+                             "[EncodeCompressBinRoundtripCsv] dataset=%s warmup "
+                             "(discarded) algorithm=%s (%s + %s)\n",
+                             dataset_name.c_str(), cfg.algo_csv_name,
+                             encoding_label(cfg.encoding),
+                             compression_label(cfg.compression));
+                std::fflush(stderr);
+                if (!benchmark_parallel_row(path, dataset_name, cfg, warm_points,
+                                            warm_max_prec, warm_dr, warm_enc,
+                                            warm_enc_flush, warm_cmp, warm_bw, warm_br,
+                                            warm_unc, warm_dec, warm_csv, warm_enc_b,
+                                            warm_cmp_b)) {
+                    continue;
+                }
+            }
+
             int64_t avg_dr = 0, avg_enc = 0, avg_enc_flush = 0, avg_cmp = 0;
             int64_t avg_bw = 0, avg_br = 0;
             int64_t avg_unc = 0, avg_dec = 0, avg_csv = 0;
