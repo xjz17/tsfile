@@ -90,74 +90,52 @@ int tsfile_test_mkdir(const char *path) {
 
 namespace {
 
-// constexpr const char kDatasetDir[] = "/home/allen/xjz17/subcolumn/dataset_tsfile";
-// constexpr const char kDatasetDir[] = "D:/github/xjz17/subcolumn/dataset_tsfile";
+// constexpr const char kDatasetDir[] = "/home/allen/xjz17/subcolumn/dataset";
+// constexpr const char kDatasetDir[] = "D:/github/xjz17/subcolumn/dataset";
 // constexpr const char kDatasetDir[] = "D:/github/xjz17/subcolumn/dataset_big_combined";
-// constexpr const char kDatasetDir[] = "E:/xjz/dataset_tsfile";
-constexpr const char kDatasetDir[] = "E:/xjz/dataset_big_combined";
+constexpr const char kDatasetDir[] = "E:/xjz/dataset";
 
 constexpr const char kBinOutputDir[] =
-    // "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/bins";
-    // "D:/github/xjz17/subcolumn/result/encoder_compress_bin/bins";
-    // "E:/xjz/encoder_compress_bin/bins";
-    "E:/xjz/encoder_compress_bin/bins_combined";
+    // "/home/allen/xjz17/subcolumn/result/encode_compress/bins";
+    // "D:/github/xjz17/subcolumn/result/encode_compress/bins";
+    "E:/xjz/encode_compress/bins";
 
 constexpr const char kWriteMetricsCsvPath[] =
-    // "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/"
+    // "/home/allen/xjz17/subcolumn/result/encode_compress/"
     // "encoder_compress_roundtrip_write_metrics.csv";
 
-    // "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
+    // "D:/github/xjz17/subcolumn/result/encode_compress/"
     // "encoder_compress_roundtrip_write_metrics3.csv";
 
-    // "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
-    // "encoder_compress_roundtrip_write_metrics4.csv";
-    
-    "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
-    "encoder_compress_roundtrip_write_metrics_combined.csv";
+    "D:/github/xjz17/subcolumn/result/encode_compress/"
+    "encoder_compress_roundtrip_write_metrics4.csv";
 
 constexpr const char kReadMetricsCsvPath[] =
-    // "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/"
+    // "/home/allen/xjz17/subcolumn/result/encode_compress/"
     // "encoder_compress_roundtrip_read_metrics.csv";
 
-    // "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
+    // "D:/github/xjz17/subcolumn/result/encode_compress/"
     // "encoder_compress_roundtrip_read_metrics3.csv";
 
-    // "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
-    // "encoder_compress_roundtrip_read_metrics4.csv";
-
-    "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
-    "encoder_compress_roundtrip_read_metrics_combined.csv";
+    "D:/github/xjz17/subcolumn/result/encode_compress/"
+    "encoder_compress_roundtrip_read_metrics4.csv";
 
 constexpr const char kCompressManifestCsvPath[] =
-    // "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/"
+    // "/home/allen/xjz17/subcolumn/result/encode_compress/"
     // "encoder_compress_roundtrip_compress_manifest.csv";
 
-    // "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
+    // "D:/github/xjz17/subcolumn/result/encode_compress/"
     // "encoder_compress_roundtrip_compress_manifest1.csv";
 
-    // "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
-    // "encoder_compress_roundtrip_compress_manifest2.csv";
-
-    "D:/github/xjz17/subcolumn/result/encoder_compress_bin/"
-    "encoder_compress_roundtrip_compress_manifest_combined.csv";
+    "D:/github/xjz17/subcolumn/result/encode_compress/"
+    "encoder_compress_roundtrip_compress_manifest2.csv";
 
 constexpr const char kDecodedCsvDir[] =
-    // "/home/allen/xjz17/subcolumn/result/encoder_compress_bin/decoded_csv";
-    // "D:/github/xjz17/subcolumn/result/encoder_compress_bin/decoded_csv";
-    // "E:/xjz/encoder_compress_bin/decoded_csv";
-    "E:/xjz/encoder_compress_bin/decoded_csv_combined";
+    // "/home/allen/xjz17/subcolumn/result/encode_compress/decoded_csv";
+    // "D:/github/xjz17/subcolumn/result/encode_compress/decoded_csv";
+    "E:/xjz/encode_compress/decoded_csv";
 
-/** Sequential repeats per benchmark phase. Raw sums from timers are divided by this count
- *  before exporting so CSV columns represent average nanoseconds per repeat (not the sum
- *  across repeats). Manifest Points is still one logical pass over the dataset rows.
- */
 constexpr int kBenchPhaseRepeats = 40;
-
-/** Windows-only decompress benchmark bin-read tuning (see decompress_from_bin_once):
- *  TSFILE_BENCH_BIN_READ_MODE — unset: nobuf (FILE_FLAG_NO_BUFFERING, fallback win32 buffered);
- *    win32 | ifstream | nobuf | no_buffering.
- *  TSFILE_BENCH_BIN_READ_SHRINK — unset or 1: timed clear()+shrink_to_fit before each read; 0 off.
- */
 
 constexpr int kMaxDecimalPrecision = 8;
 
@@ -209,11 +187,6 @@ int64_t to_scaled_int64(const std::string &raw, int64_t multiplier) {
     return static_cast<int64_t>(std::llround(d * static_cast<double>(multiplier)));
 }
 
-/** For CSV floats scaled to int64 before TsFile encoders: use the maximum decimal
- *  precision seen within each row block only (not the whole file). Block size matches
- *  storage::LongSubcolumnEncoder::BLOCK_SIZE so SUBCOLUMN / SPRINTZ_SUBCOLUMN /
- *  TS_2DIFF_SUBCOLUMN pages quantize consistently within encoder blocks; other INT64
- *  codecs receive the same per-row values from this pipeline. */
 static void scale_tokens_to_int64_per_subcolumn_block(
     const std::vector<std::string> &tokens, std::vector<int64_t> &out_values) {
     const int bs = storage::LongSubcolumnEncoder::BLOCK_SIZE;
@@ -303,14 +276,71 @@ std::vector<std::string> list_csv_files(const std::string &dir_in) {
     return files;
 }
 
+std::string parent_directory(const std::string &path) {
+    size_t end = path.size();
+    while (end > 0 && (path[end - 1] == '/' || path[end - 1] == '\\')) {
+        --end;
+    }
+    const size_t pos = path.find_last_of("/\\", end - 1);
+    if (pos == std::string::npos) {
+        return "";
+    }
+    return path.substr(0, pos);
+}
+
+bool merge_source_csvs_into_combined(const std::string &source_dataset_dir,
+                                     std::string &out_combined_csv_path) {
+    const std::vector<std::string> sources = list_csv_files(source_dataset_dir);
+    if (sources.empty()) {
+        return false;
+    }
+
+    const std::string parent = parent_directory(source_dataset_dir);
+    const std::string combined_dir =
+        parent.empty() ? "dataset_big_combined" : parent + "/dataset_big_combined";
+    ensure_dir_recursive(combined_dir);
+    out_combined_csv_path = combined_dir + "/combined.csv";
+
+    std::ofstream out(out_combined_csv_path.c_str(),
+                      std::ios::out | std::ios::trunc);
+    if (!out.good()) {
+        return false;
+    }
+
+    for (const std::string &src_path : sources) {
+        std::ifstream in(src_path.c_str());
+        if (!in.good()) {
+            return false;
+        }
+        std::string line;
+        while (std::getline(in, line)) {
+            if (!line.empty() && line.back() == '\r') {
+                line.pop_back();
+            }
+            out << line << '\n';
+        }
+        if (in.bad()) {
+            return false;
+        }
+    }
+
+    out.flush();
+    return static_cast<bool>(out);
+}
+
+bool prepare_combined_benchmark_dataset(std::string &out_combined_csv_path) {
+    if (!merge_source_csvs_into_combined(kDatasetDir, out_combined_csv_path)) {
+        return false;
+    }
+    std::fflush(stderr);
+    return true;
+}
+
 static bool load_scaled_int64_column_csv_rw_dataset_read_timing(
     const std::string &dataset_file,
     std::vector<int64_t> &out_values,
     int &max_decimal_precision,
     int64_t *out_dataset_read_ns) {
-    // Time window aligned with write_decoded_values_csv_timed: stream open +
-    // per-row text I/O and light line handling (no strtod here — scaling uses
-    // scale_tokens_to_int64_per_subcolumn_block).
     const auto read_t0 = std::chrono::steady_clock::now();
     std::ifstream in(dataset_file.c_str());
     if (!in.good()) {
@@ -344,8 +374,6 @@ static bool load_scaled_int64_column_csv_rw_dataset_read_timing(
     return true;
 }
 
-/** Parse first CSV column as IEEE-754 doubles (no decimal scaling). Timing matches the
- *  scaled-int path: text scan + strtod only inside timed region after line collection. */
 static bool load_double_column_csv_rw_dataset_read_timing(
     const std::string &dataset_file,
     std::vector<double> &out_values,
@@ -509,9 +537,6 @@ const char *compression_label(common::CompressionType c) {
     return "UNKNOWN_COMPRESSION";
 }
 
-/** Plain + LZ4/GZIP/ZSTD/LZMA: compressor input is a contiguous blob (native-endian),
- *  here IEEE-754 double values (`sizeof(double)` per row), not scaled int64 and not
- *  TsFile-encoded PLAIN bytes. */
 static bool plain_codec_uses_raw_int64_compress_input(common::CompressionType c) {
     switch (c) {
 #ifdef ENABLE_LZ4
@@ -877,7 +902,6 @@ static bool factory_decompress_decode_repeated_double(
     return true;
 }
 
-/** Forward — Win32 benchmark dispatcher may delegate to this implementation. */
 static bool tsfile_read_bin_buffered_ifstream(const std::string &bin_path,
                                               std::vector<char> &out);
 
@@ -905,7 +929,6 @@ static std::wstring tsfile_utf8_to_wide_path(const std::string &utf8) {
     return w;
 }
 
-/** Push writes toward device; reduces stale dirty-cache reads on immediate re-open. */
 static bool tsfile_win_write_bin_through(const std::string &path_utf8,
                                          const std::vector<char> &data) {
     const std::wstring wpath = tsfile_utf8_to_wide_path(path_utf8);
@@ -954,7 +977,6 @@ static DWORD tsfile_win_logical_sector_bytes(const std::wstring &file_path_w) {
     return bytes_per_sector;
 }
 
-/** Win32 synchronous read; timed region should include open/size/read/close. */
 static bool tsfile_read_bin_win32_buffered(const std::string &path_utf8,
                                            std::vector<char> &out) {
     const std::wstring wpath = tsfile_utf8_to_wide_path(path_utf8);
@@ -1005,7 +1027,6 @@ static bool tsfile_read_bin_win32_buffered(const std::string &path_utf8,
     return total_read == file_sz;
 }
 
-/** Bypasses OS read cache (FILE_FLAG_NO_BUFFERING); sector-aligned IO; often slower. */
 static bool tsfile_read_bin_win32_no_buffering(const std::string &path_utf8,
                                                std::vector<char> &out) {
     const std::wstring wpath = tsfile_utf8_to_wide_path(path_utf8);
@@ -1092,13 +1113,6 @@ static bool tsfile_read_bin_win32_no_buffering(const std::string &path_utf8,
     return true;
 }
 
-/** TSFILE_BENCH_BIN_READ_MODE (Windows decompress bench read path):
- *  unset / nobuf — FILE_FLAG_NO_BUFFERING then fallback to Win32 buffered;
- *  win32 — CreateFile+ReadFile buffered sequential;
- *  ifstream — std::ifstream chunked read (legacy).
- *
- *  TSFILE_BENCH_BIN_READ_SHRINK: unset or 1 — clear()+shrink_to_fit() inside timed window
- *  before each read so buffer allocation is counted; 0 — disable. */
 static int bench_windows_bin_read_mode() {
     static int cached = -2;
     if (cached != -2) {
@@ -1920,8 +1934,6 @@ bool benchmark_decompress_row(const CompressManifestRecord &manifest,
 
 }
 
-/** Builds a tiny CSV where block 0 is all integers and block 1 (partial) uses high
- *  decimal precision; exercises per-block scaling + SUBCOLUMN INT64 round-trip. */
 TEST(DatasetEncoderCompressBinScaledCsv, PerBlockScaling_SubcolumnRoundTripTmpCsv) {
     namespace fs = std::filesystem;
     const fs::path dir =
@@ -1965,10 +1977,14 @@ TEST(DatasetEncoderCompressBinScaledCsv, PerBlockScaling_SubcolumnRoundTripTmpCs
                                          v_br, v_unc, v_dec, v_csv, cmp_read));
 }
 
-TEST(DatasetEncoderCompressBinBench, EncodeCompressWriteBinCsv) {
-    const std::vector<std::string> csv_paths = list_csv_files(kDatasetDir);
-    ASSERT_FALSE(csv_paths.empty())
-        << "No CSV under dataset dir (check kDatasetDir): " << kDatasetDir;
+TEST(DatasetCompressBench, EncodeCompressWrite) {
+    std::string combined_csv_path;
+    ASSERT_TRUE(prepare_combined_benchmark_dataset(combined_csv_path))
+        << "Failed to merge CSVs from kDatasetDir into dataset_big_combined: "
+        << kDatasetDir;
+
+    const std::string dataset_name = basename_no_ext(combined_csv_path);
+    const std::string &path = combined_csv_path;
 
     ensure_dir_recursive(kBinOutputDir);
     ensure_dir_recursive(kDecodedCsvDir);
@@ -1997,11 +2013,9 @@ TEST(DatasetEncoderCompressBinBench, EncodeCompressWriteBinCsv) {
     manifest_out << "Dataset,Encoding Algorithm,Source CSV Path,Points,Encoded "
                     "Uncompressed Bytes,Raw Plain Codec\n";
 
-    for (const std::string &path : csv_paths) {
-        const std::string dataset_name = basename_no_ext(path);
-        for (size_t cfg_idx = 0; cfg_idx < configs.size(); ++cfg_idx) {
-            const BenchParallelConfig &cfg = configs[cfg_idx];
-            if (cfg_idx == 0) {
+    for (size_t cfg_idx = 0; cfg_idx < configs.size(); ++cfg_idx) {
+        const BenchParallelConfig &cfg = configs[cfg_idx];
+        if (cfg_idx == 0) {
                 size_t warm_points = 0;
                 int warm_max_prec = 0;
                 int64_t warm_dr = 0, warm_enc = 0, warm_enc_flush = 0, warm_cmp = 0;
@@ -2009,7 +2023,7 @@ TEST(DatasetEncoderCompressBinBench, EncodeCompressWriteBinCsv) {
                 size_t warm_enc_b = 0, warm_cmp_b = 0;
                 bool warm_raw = false;
                 std::fprintf(stderr,
-                             "[EncodeCompressWriteBinCsv] dataset=%s warmup (discarded) "
+                             "[EncodeCompressWrite] dataset=%s warmup (discarded) "
                              "algorithm=%s (%s + %s)\n",
                              dataset_name.c_str(), cfg.algo_csv_name,
                              encoding_label(cfg.encoding),
@@ -2030,7 +2044,7 @@ TEST(DatasetEncoderCompressBinBench, EncodeCompressWriteBinCsv) {
             int max_prec = 0;
             bool raw_plain_out = false;
             std::fprintf(stderr,
-                         "[EncodeCompressWriteBinCsv] dataset=%s path=%s algorithm=%s "
+                         "[EncodeCompressWrite] dataset=%s path=%s algorithm=%s "
                          "(%s + %s)\n",
                          dataset_name.c_str(), path.c_str(), cfg.algo_csv_name,
                          encoding_label(cfg.encoding), compression_label(cfg.compression));
@@ -2042,7 +2056,7 @@ TEST(DatasetEncoderCompressBinBench, EncodeCompressWriteBinCsv) {
             }
 
             std::fprintf(stderr,
-                         "[EncodeCompressWriteBinCsv] compressed_size_bytes=%zu "
+                         "[EncodeCompressWrite] compressed_size_bytes=%zu "
                          "encoded_uncompressed_bytes=%zu "
                          "(compressed / encoded = %.6f)\n",
                          cmp_b, enc_b,
@@ -2069,7 +2083,6 @@ TEST(DatasetEncoderCompressBinBench, EncodeCompressWriteBinCsv) {
             manifest_out << dataset_name << ',' << cfg.algo_csv_name << ',' << path << ','
                          << points << ',' << enc_b << ','
                          << (raw_plain_out ? 1 : 0) << '\n';
-        }
     }
 
     write_metrics.close();
@@ -2078,11 +2091,7 @@ TEST(DatasetEncoderCompressBinBench, EncodeCompressWriteBinCsv) {
     ASSERT_TRUE(manifest_out.good());
 }
 
-TEST(DatasetEncoderCompressBinBench, DecodeBinWriteDecodedCsv) {
-    const std::vector<std::string> csv_paths = list_csv_files(kDatasetDir);
-    ASSERT_FALSE(csv_paths.empty())
-        << "No CSV under dataset dir (check kDatasetDir): " << kDatasetDir;
-
+TEST(DatasetCompressBench, DecodeWriteDecoded) {
     ensure_dir_recursive(kDecodedCsvDir);
     const std::string metrics_parent =
         std::string(kReadMetricsCsvPath).substr(
@@ -2091,9 +2100,11 @@ TEST(DatasetEncoderCompressBinBench, DecodeBinWriteDecodedCsv) {
 
     std::map<std::pair<std::string, std::string>, CompressManifestRecord> manifest_map;
     ASSERT_TRUE(load_compress_manifest_map(kCompressManifestCsvPath, manifest_map))
-        << "Manifest missing or invalid (run EncodeCompressWriteBinCsv first): "
+        << "Manifest missing or invalid (run EncodeCompressWrite first): "
         << kCompressManifestCsvPath;
     ASSERT_FALSE(manifest_map.empty()) << "Manifest has no data rows";
+
+    const std::string dataset_name = manifest_map.begin()->first.first;
 
     const std::vector<BenchParallelConfig> configs = build_parallel_benchmark_configs();
     ASSERT_FALSE(configs.empty())
@@ -2107,25 +2118,23 @@ TEST(DatasetEncoderCompressBinBench, DecodeBinWriteDecodedCsv) {
                     "Write Time Nanos,Points,"
                     "TsFile Size Bytes\n";
 
-    for (const std::string &path : csv_paths) {
-        const std::string dataset_name = basename_no_ext(path);
-        for (size_t cfg_idx = 0; cfg_idx < configs.size(); ++cfg_idx) {
-            const BenchParallelConfig &cfg = configs[cfg_idx];
-            const auto it =
-                manifest_map.find(std::make_pair(dataset_name, cfg.algo_csv_name));
-            if (it == manifest_map.end()) {
-                ADD_FAILURE() << "No manifest row for dataset=" << dataset_name
-                              << " algorithm=" << cfg.algo_csv_name;
-                continue;
-            }
-            const CompressManifestRecord &manifest_rec = it->second;
+    for (size_t cfg_idx = 0; cfg_idx < configs.size(); ++cfg_idx) {
+        const BenchParallelConfig &cfg = configs[cfg_idx];
+        const auto it =
+            manifest_map.find(std::make_pair(dataset_name, cfg.algo_csv_name));
+        if (it == manifest_map.end()) {
+            ADD_FAILURE() << "No manifest row for dataset=" << dataset_name
+                          << " algorithm=" << cfg.algo_csv_name;
+            continue;
+        }
+        const CompressManifestRecord &manifest_rec = it->second;
 
-            if (cfg_idx == 0) {
+        if (cfg_idx == 0) {
                 int64_t warm_verify = 0, warm_br = 0, warm_unc = 0, warm_dec = 0,
                         warm_csv = 0;
                 size_t warm_cmp = 0;
                 std::fprintf(stderr,
-                             "[DecodeBinWriteDecodedCsv] dataset=%s warmup (discarded) "
+                             "[DecodeWriteDecoded] dataset=%s warmup (discarded) "
                              "algorithm=%s (%s + %s)\n",
                              dataset_name.c_str(), cfg.algo_csv_name,
                              encoding_label(cfg.encoding),
@@ -2141,7 +2150,7 @@ TEST(DatasetEncoderCompressBinBench, DecodeBinWriteDecodedCsv) {
             int64_t avg_verify = 0, avg_br = 0, avg_unc = 0, avg_dec = 0, avg_csv = 0;
             size_t cmp_b = 0;
             std::fprintf(stderr,
-                         "[DecodeBinWriteDecodedCsv] dataset=%s algorithm=%s (%s + %s)\n",
+                         "[DecodeWriteDecoded] dataset=%s algorithm=%s (%s + %s)\n",
                          dataset_name.c_str(), cfg.algo_csv_name,
                          encoding_label(cfg.encoding), compression_label(cfg.compression));
             std::fflush(stderr);
@@ -2159,7 +2168,6 @@ TEST(DatasetEncoderCompressBinBench, DecodeBinWriteDecodedCsv) {
                          << ',' << read_cpu_ns << ',' << avg_verify << ',' << avg_br << ','
                          << avg_csv << ',' << manifest_rec.points << ',' << bin_size_bytes
                          << '\n';
-        }
     }
 
     read_metrics.close();
