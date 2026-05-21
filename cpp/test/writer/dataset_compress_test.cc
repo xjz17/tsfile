@@ -90,50 +90,36 @@ int tsfile_test_mkdir(const char *path) {
 
 namespace {
 
-// constexpr const char kDatasetDir[] = "/home/allen/xjz17/subcolumn/dataset";
-// constexpr const char kDatasetDir[] = "D:/github/xjz17/subcolumn/dataset";
-// constexpr const char kDatasetDir[] = "D:/github/xjz17/subcolumn/dataset_big_combined";
-constexpr const char kDatasetDir[] = "E:/xjz/dataset";
+constexpr const char kDatasetDir[] = "path/to/your/directory/dataset";
+// constexpr const char kDatasetDir[] = "path/to/your/ssd/dataset";
 
 constexpr const char kBinOutputDir[] =
-    // "/home/allen/xjz17/subcolumn/result/encode_compress/bins";
-    // "D:/github/xjz17/subcolumn/result/encode_compress/bins";
-    "E:/xjz/encode_compress/bins";
-
+    "path/to/your/directory/result/encoder_compress/bins_combined";
 constexpr const char kWriteMetricsCsvPath[] =
-    // "/home/allen/xjz17/subcolumn/result/encode_compress/"
-    // "encoder_compress_roundtrip_write_metrics.csv";
-
-    // "D:/github/xjz17/subcolumn/result/encode_compress/"
-    // "encoder_compress_roundtrip_write_metrics3.csv";
-
-    "D:/github/xjz17/subcolumn/result/encode_compress/"
-    "encoder_compress_roundtrip_write_metrics4.csv";
-
+    "path/to/your/directory/result/encoder_compress/"
+    "encoder_compress_roundtrip_write_metrics_combined.csv";
 constexpr const char kReadMetricsCsvPath[] =
-    // "/home/allen/xjz17/subcolumn/result/encode_compress/"
-    // "encoder_compress_roundtrip_read_metrics.csv";
-
-    // "D:/github/xjz17/subcolumn/result/encode_compress/"
-    // "encoder_compress_roundtrip_read_metrics3.csv";
-
-    "D:/github/xjz17/subcolumn/result/encode_compress/"
-    "encoder_compress_roundtrip_read_metrics4.csv";
-
+    "path/to/your/directory/result/encoder_compress/"
+    "encoder_compress_roundtrip_read_metrics_combined.csv";
 constexpr const char kCompressManifestCsvPath[] =
-    // "/home/allen/xjz17/subcolumn/result/encode_compress/"
-    // "encoder_compress_roundtrip_compress_manifest.csv";
-
-    // "D:/github/xjz17/subcolumn/result/encode_compress/"
-    // "encoder_compress_roundtrip_compress_manifest1.csv";
-
-    "D:/github/xjz17/subcolumn/result/encode_compress/"
-    "encoder_compress_roundtrip_compress_manifest2.csv";
-
+    "path/to/your/directory/result/encoder_compress/"
+    "encoder_compress_roundtrip_compress_manifest_combined.csv";
 constexpr const char kDecodedCsvDir[] =
-    // "/home/allen/xjz17/subcolumn/result/encode_compress/decoded_csv";
-    // "D:/github/xjz17/subcolumn/result/encode_compress/decoded_csv";
-    "E:/xjz/encode_compress/decoded_csv";
+    "path/to/your/directory/result/encoder_compress/decoded_csv_combined";
+
+// constexpr const char kBinOutputDir[] =
+//     "path/to/your/ssd/encoder_compress/bins";
+// constexpr const char kWriteMetricsCsvPath[] =
+//     "path/to/your/directory/result/encoder_compress/"
+//     "encoder_compress_roundtrip_write_metrics3.csv";
+// constexpr const char kReadMetricsCsvPath[] =
+//     "path/to/your/directory/result/encoder_compress/"
+//     "encoder_compress_roundtrip_read_metrics3.csv";
+// constexpr const char kCompressManifestCsvPath[] =
+//     "path/to/your/directory/result/encoder_compress/"
+//     "encoder_compress_roundtrip_compress_manifest3.csv";
+// constexpr const char kDecodedCsvDir[] =
+//     "path/to/your/ssd/encoder_compress/decoded_csv";
 
 constexpr int kBenchPhaseRepeats = 40;
 
