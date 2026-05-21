@@ -710,12 +710,11 @@ public class SubcolumnTest {
 
     @Test
     public void testSubcolumn() throws IOException {
-        String parent_dir = "D:/github/xjz17/subcolumn/";
+        String parent_dir = "path/to/your/directory/";
 
         String input_parent_dir = parent_dir + "dataset/";
 
-        String output_parent_dir = "D:/encoding-subcolumn/result/";
-        // String output_parent_dir = parent_dir + "result/";
+        String output_parent_dir = parent_dir + "result/";
 
         String outputPath = output_parent_dir + "subcolumn.csv";
 
@@ -839,10 +838,9 @@ public class SubcolumnTest {
 
     @Test
     public void testTransData() throws IOException {
-        String parent_dir = "D:/github/xjz17/subcolumn/";
+        String parent_dir = "path/to/your/directory/";
 
-        String output_parent_dir = "D:/encoding-subcolumn/trans_data_result/";
-        // String output_parent_dir = parent_dir + "trans_data_result/";
+        String output_parent_dir = parent_dir + "trans_data_result/";
 
         String input_parent_dir = parent_dir + "trans_data/";
 
