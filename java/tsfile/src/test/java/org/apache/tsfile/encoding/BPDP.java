@@ -1,4 +1,4 @@
-package org.apache.iotdb.tsfile.encoding;
+package org.apache.tsfile.encoding;
 
 import com.csvreader.CsvReader;
 import com.csvreader.CsvWriter;
@@ -11,7 +11,10 @@ import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 public class BPDP {
@@ -19,6 +22,7 @@ public class BPDP {
     private static final int CHUNK_SIZE = 1024;
     static int all_time_of_repeat = 10;
     static int all_max_pack_size = 1;
+    private static final Map<String, PackingPlan> PACKING_PLAN_CACHE = new HashMap<>();
 
     static String trimStr(String s) {
         if (s == null) return "";
@@ -193,122 +197,329 @@ public class BPDP {
     // 动态规划结果类
     static class PackingPlan {
         int optimalC;
-        List<Integer> groupSizes;    // 每个分组包含的块数
-        List<Integer> groupBitWidths; // 每个分组的位宽
+        int[] groupSizes;    // 每个分组包含的块数
+        int[] groupBitWidths; // 每个分组的位宽
         int totalCost;
 
-        PackingPlan(int optimalC, List<Integer> groupSizes, List<Integer> groupBitWidths, int totalCost) {
+        PackingPlan(int optimalC, int[] groupSizes, int[] groupBitWidths, int totalCost) {
             this.optimalC = optimalC;
-            this.groupSizes = groupSizes;
-            this.groupBitWidths = groupBitWidths;
+            this.groupSizes = groupSizes == null ? new int[0] : groupSizes;
+            this.groupBitWidths = groupBitWidths == null ? new int[0] : groupBitWidths;
             this.totalCost = totalCost;
         }
     }
 
-    // 计算最优分组方案的完整实现
     public static PackingPlan computeOptimalPackingPlan(int[] bitWidths, int pack_size) {
-        int N = bitWidths.length;
-        if (N == 0) {
-            return new PackingPlan(0, new ArrayList<>(), new ArrayList<>(), 0);
+        String cacheKey = pack_size + ":" + Arrays.toString(bitWidths);
+        PackingPlan cachedPlan = PACKING_PLAN_CACHE.get(cacheKey);
+        if (cachedPlan != null) {
+            return cachedPlan;
+        }
+        PackingPlan plan = computeOptimalPackingPlanUncached(bitWidths, pack_size);
+        PACKING_PLAN_CACHE.put(cacheKey, plan);
+        return plan;
+    }
+
+    static class MinCandidateDeque {
+        int[] indices;
+        int[] values;
+        int head;
+        int tail;
+
+        MinCandidateDeque(int capacity) {
+            indices = new int[Math.max(2, capacity + 2)];
+            values = new int[indices.length];
         }
 
-        // 预计算所有区间的最大位宽
-        int[][] maxB = new int[N][N];
-        for (int l = 0; l < N; l++) {
-            maxB[l][l] = bitWidths[l];
-            for (int r = l + 1; r < N; r++) {
-                maxB[l][r] = Math.max(maxB[l][r - 1], bitWidths[r]);
+        void clear() {
+            head = 0;
+            tail = 0;
+        }
+
+        boolean isEmpty() {
+            return head == tail;
+        }
+
+        void add(int index, int value) {
+            while (tail > head && values[tail - 1] >= value) {
+                tail--;
             }
+            indices[tail] = index;
+            values[tail] = value;
+            tail++;
+        }
+
+        void expireBefore(int minIndex) {
+            while (head < tail && indices[head] < minIndex) {
+                head++;
+            }
+            if (head == tail) {
+                clear();
+            }
+        }
+
+        int bestIndex() {
+            return indices[head];
+        }
+
+        int bestValue() {
+            return values[head];
+        }
+    }
+
+    // 计算最优分组方案的完整实现
+    private static PackingPlan computeOptimalPackingPlanUncached(int[] bitWidths, int pack_size) {
+        int N = bitWidths.length;
+        if (N == 0) {
+            return new PackingPlan(0, new int[0], new int[0], 0);
         }
 
         int minTotalCost = Integer.MAX_VALUE;
         int bestC = 1;
-        List<Integer> bestGroupSizes = new ArrayList<>();
-        List<Integer> bestGroupBitWidths = new ArrayList<>();
+        int[] bestGroupSizes = new int[0];
+        int[] bestGroupBitWidths = new int[0];
 
         int maxPossibleC = 32 - Integer.numberOfLeadingZeros(N);
 
+        final int INF = Integer.MAX_VALUE / 4;
         for (int C = 1; C <= maxPossibleC; C++) {
-            int low_C = (C == 1) ? 1 : (1 << (C - 1));
             int high_C = Math.min((1 << C) - 1, N);
+            int metadataCost = 6 + C;
 
-            // DP表和相关记录数组
-            int[][] dp = new int[N + 1][2];
-            int[][] prevState = new int[N + 1][2];
-            int[][] prevFlag = new int[N + 1][2];
-            int[][] packSize = new int[N + 1][2];
+            int[] dp = new int[N + 1];
+            int[] prev = new int[N + 1];
+            int[] prevBitWidth = new int[N + 1];
+            Arrays.fill(dp, INF);
+            Arrays.fill(prev, -1);
+            dp[0] = 0;
 
-            // 初始化
-            for (int i = 0; i <= N; i++) {
-                dp[i][0] = Integer.MAX_VALUE / 2;
-                dp[i][1] = Integer.MAX_VALUE / 2;
+            MinCandidateDeque[] queues = new MinCandidateDeque[65];
+            for (int b = 1; b <= 64; b++) {
+                queues[b] = new MinCandidateDeque(N + 1);
+                queues[b].add(0, 0);
             }
-            dp[0][0] = 0;
 
-            // 动态规划计算
             for (int i = 1; i <= N; i++) {
-                for (int k = Math.max(1, i - high_C + 1); k <= i; k++) {
-                    int packLength = i - k + 1;
-                    int currentMaxB = maxB[k - 1][i - 1];
-                    int packCost = pack_size * packLength * currentMaxB + 6 + C;
+                int currentBw = bitWidths[i - 1];
+                for (int b = 1; b < currentBw; b++) {
+                    queues[b].clear();
+                }
 
-                    if (packLength < low_C) {
-                        // 小分组，不能改变状态
-                        if (dp[k - 1][0] + packCost < dp[i][0]) {
-                            dp[i][0] = dp[k - 1][0] + packCost;
-                            prevState[i][0] = k - 1;
-                            prevFlag[i][0] = 0;
-                            packSize[i][0] = packLength;
-                        }
-                        if (dp[k - 1][1] + packCost < dp[i][1]) {
-                            dp[i][1] = dp[k - 1][1] + packCost;
-                            prevState[i][1] = k - 1;
-                            prevFlag[i][1] = 1;
-                            packSize[i][1] = packLength;
-                        }
-                    } else {
-                        // 大分组，可以改变状态到1
-                        if (dp[k - 1][0] + packCost < dp[i][1]) {
-                            dp[i][1] = dp[k - 1][0] + packCost;
-                            prevState[i][1] = k - 1;
-                            prevFlag[i][1] = 0;
-                            packSize[i][1] = packLength;
-                        }
-                        if (dp[k - 1][1] + packCost < dp[i][1]) {
-                            dp[i][1] = dp[k - 1][1] + packCost;
-                            prevState[i][1] = k - 1;
-                            prevFlag[i][1] = 1;
-                            packSize[i][1] = packLength;
-                        }
+                int bestValue = INF;
+                int bestPrev = -1;
+                int bestBw = currentBw;
+                int minPrev = Math.max(0, i - high_C);
+                for (int b = currentBw; b <= 64; b++) {
+                    MinCandidateDeque q = queues[b];
+                    q.expireBefore(minPrev);
+                    if (q.isEmpty()) {
+                        continue;
+                    }
+                    int candidate = q.bestValue() + pack_size * b * i + metadataCost;
+                    if (candidate < bestValue) {
+                        bestValue = candidate;
+                        bestPrev = q.bestIndex();
+                        bestBw = b;
+                    }
+                }
+
+                dp[i] = bestValue;
+                prev[i] = bestPrev;
+                prevBitWidth[i] = bestBw;
+                if (bestValue < INF) {
+                    for (int b = 1; b <= 64; b++) {
+                        queues[b].add(i, bestValue - pack_size * b * i);
                     }
                 }
             }
 
-            // 回溯构建分组方案
-            if (dp[N][1] < minTotalCost) {
-                minTotalCost = dp[N][1];
+            if (dp[N] < minTotalCost) {
+                minTotalCost = dp[N];
                 bestC = C;
-                bestGroupSizes = new ArrayList<>();
-                bestGroupBitWidths = new ArrayList<>();
-
-                // 回溯路径
+                int[] reverseSizes = new int[N];
+                int[] reverseBitWidths = new int[N];
+                int count = 0;
                 int i = N;
-                int flag = 1;
-                while (i > 0) {
-                    int size = packSize[i][flag];
-                    int start = i - size;
-                    int bitWidth = maxB[start][i - 1];
-
-                    bestGroupSizes.add(0, size);
-                    bestGroupBitWidths.add(0, bitWidth);
-
-                    i = prevState[i][flag];
-                    flag = prevFlag[i + size][flag]; // 注意这里要调整索引
+                while (i > 0 && prev[i] >= 0) {
+                    int prevI = prev[i];
+                    reverseSizes[count] = i - prevI;
+                    reverseBitWidths[count] = prevBitWidth[i];
+                    count++;
+                    i = prevI;
+                }
+                if (i == 0) {
+                    bestGroupSizes = new int[count];
+                    bestGroupBitWidths = new int[count];
+                    for (int g = 0; g < count; g++) {
+                        bestGroupSizes[g] = reverseSizes[count - 1 - g];
+                        bestGroupBitWidths[g] = reverseBitWidths[count - 1 - g];
+                    }
                 }
             }
         }
 
-        return new PackingPlan(bestC, bestGroupSizes, bestGroupBitWidths, minTotalCost);
+        return new PackingPlan(computeMinValidC(bestGroupSizes), bestGroupSizes, bestGroupBitWidths, minTotalCost);
+    }
+
+    /** Map logical bit width (1..64) to 6-bit on-wire field (0 means 64). */
+    private static int encodeBitWidthField(int bitWidth) {
+        if (bitWidth <= 0 || bitWidth > 64) {
+            throw new IllegalArgumentException("Invalid bit width: " + bitWidth);
+        }
+        return bitWidth == 64 ? 0 : bitWidth;
+    }
+
+    /** Decode 6-bit on-wire bit-width field back to logical width (1..64). */
+    private static int decodeBitWidthField(int stored) {
+        if (stored < 0 || stored > 63) {
+            throw new IllegalArgumentException("Invalid stored bit width: " + stored);
+        }
+        return stored == 0 ? 64 : stored;
+    }
+
+    /** Minimum C (bits per group-size field) that can encode all group sizes in the plan. */
+    public static int computeMinValidC(int[] groupSizes) {
+        if (groupSizes == null || groupSizes.length == 0) {
+            return 1;
+        }
+        int maxGroup = 1;
+        for (int size : groupSizes) {
+            maxGroup = Math.max(maxGroup, size);
+        }
+        int maxPossibleC = 32 - Integer.numberOfLeadingZeros(maxGroup);
+        for (int c = 1; c <= maxPossibleC; c++) {
+            if (maxGroup <= ((1 << c) - 1)) {
+                return c;
+            }
+        }
+        return maxPossibleC;
+    }
+
+    /** Encoded size in bits for the optimal DP plan (same format as {@link #compressWithOptimalPacking}). */
+    public static int computeOptimalEncodedBitCost(long[] paddedArray, int[] bitWidths, int pack_size) {
+        int[] encodePos = new int[1];
+        compressWithOptimalPacking(paddedArray, bitWidths, pack_size, encodePos);
+        return encodePos[0] * 8;
+    }
+
+    /** Byte size for a plan without writing a bitstream (matches {@link #compressWithPackingPlan}). */
+    public static int computeEncodedByteSizeForPlan(PackingPlan plan, int pack_size) {
+        return calculateTotalCompressedSize(plan, pack_size);
+    }
+
+    /** Byte size for optimal DP grouping without writing a bitstream. */
+    public static int computeOptimalEncodedByteSize(long[] paddedArray, int[] bitWidths, int pack_size) {
+        if (bitWidths == null || bitWidths.length == 0) {
+            return 0;
+        }
+        PackingPlan plan = computeOptimalPackingPlan(bitWidths, pack_size);
+        return calculateTotalCompressedSize(plan, pack_size);
+    }
+
+    static final int[] EXACT_ORACLE_PACK_SIZES = {1, 2, 4, 8, 16, 32, 64, 128, 256, 512};
+
+    static class ExactOracleCompressionResult {
+        byte[] compressedData;
+        long encodedBits;
+        int packSize;
+        int paddedLength;
+        boolean vanilla;
+        int[] vanillaGroupBitWidths;
+    }
+
+    static ExactOracleCompressionResult compressWithBestExactPacking(long[] values) {
+        ExactOracleCompressionResult best = null;
+        for (int packSize : EXACT_ORACLE_PACK_SIZES) {
+            if (packSize <= 0) {
+                continue;
+            }
+            int remainder = values.length % packSize;
+            int paddingLength = remainder == 0 ? 0 : packSize - remainder;
+            long[] padded = new long[values.length + paddingLength];
+            System.arraycopy(values, 0, padded, 0, values.length);
+            int groupCount = padded.length / packSize;
+            int[] bitWidths = new int[groupCount];
+            for (int g = 0; g < groupCount; g++) {
+                bitWidths[g] = BP.groupBitWidthForPack(padded, g * packSize, packSize);
+            }
+
+            int[] encodePos = new int[1];
+            byte[] encoded = compressWithOptimalPacking(padded, bitWidths, packSize, encodePos);
+            long encodedBits = encodePos[0] * 8L;
+            if (best == null || encodedBits < best.encodedBits) {
+                best = new ExactOracleCompressionResult();
+                best.compressedData = encoded;
+                best.encodedBits = encodedBits;
+                best.packSize = packSize;
+                best.paddedLength = padded.length;
+                best.vanilla = false;
+            }
+
+            BP.VanillaPackLayout vanillaLayout = BP.layoutVanillaFixedPack(values, packSize);
+            byte[] vanillaEncoded = BP.encodeVanillaFixedPack(vanillaLayout);
+            long vanillaBits = vanillaEncoded.length * 8L;
+            if (vanillaBits < best.encodedBits) {
+                best = new ExactOracleCompressionResult();
+                best.compressedData = vanillaEncoded;
+                best.encodedBits = vanillaBits;
+                best.packSize = packSize;
+                best.paddedLength = vanillaLayout.paddedValues.length;
+                best.vanilla = true;
+                best.vanillaGroupBitWidths = vanillaLayout.groupBitWidths;
+            }
+        }
+        return best;
+    }
+
+    static long[] decompressExactOracle(ExactOracleCompressionResult result) {
+        if (result == null || result.compressedData == null) {
+            return new long[0];
+        }
+        if (result.vanilla) {
+            return BP.decodeBitPacking(
+                    result.compressedData, result.vanillaGroupBitWidths, result.packSize, result.paddedLength);
+        }
+        return decompressWithOptimalPacking(result.compressedData, result.paddedLength, result.packSize);
+    }
+
+    /**
+     * Exact on-wire bit count for a packing plan at {@code pack_size} (matches
+     * {@link #compressWithPackingPlan} before byte alignment).
+     */
+    public static int computeBitstreamBitCost(PackingPlan plan, int pack_size) {
+        if (plan == null || plan.groupSizes == null || plan.groupSizes.length == 0) {
+            return 0;
+        }
+        int bits = 6 + 32;
+        for (int gi = 0; gi < plan.groupSizes.length; ++gi) {
+            bits += plan.optimalC + 6;
+            bits += plan.groupSizes[gi] * pack_size * plan.groupBitWidths[gi];
+        }
+        return bits;
+    }
+
+    /**
+     * DP objective cost used inside {@link #computeOptimalPackingPlan} for a fixed
+     * {@code plan.optimalC} (excludes the 6+32 bit stream header).
+     */
+    public static int computeDpObjectiveBitCost(PackingPlan plan, int pack_size) {
+        if (plan == null || plan.groupSizes == null || plan.groupSizes.length == 0) {
+            return 0;
+        }
+        int cost = 0;
+        for (int gi = 0; gi < plan.groupSizes.length; ++gi) {
+            cost += pack_size * plan.groupSizes[gi] * plan.groupBitWidths[gi];
+            cost += 6 + plan.optimalC;
+        }
+        return cost;
+    }
+
+    /** Encoded size in bits for an explicit plan (bytes written × 8, p=1 value-level). */
+    public static int computeEncodedBitCostForPlan(
+            long[] paddedArray, PackingPlan plan, int pack_size) {
+        int[] encodePos = new int[1];
+        compressWithPackingPlan(paddedArray, plan, pack_size, encodePos);
+        return encodePos[0] * 8;
     }
 
     // 计算压缩后数据总大小
@@ -320,13 +531,13 @@ public class BPDP {
         totalSize += 32; // 分组数量占用32bits
 
         // 每个分组的元数据: packsize(plan.optimalC bits) + 位宽(6bits)
-        int groupMetadataBits = plan.groupSizes.size() * (plan.optimalC + 6);
+        int groupMetadataBits = plan.groupSizes.length * (plan.optimalC + 6);
         totalSize += groupMetadataBits;
 
         // 压缩数据大小
-        for (int i = 0; i < plan.groupSizes.size(); i++) {
-            int groupBlocks = plan.groupSizes.get(i);
-            int bitWidth = plan.groupBitWidths.get(i);
+        for (int i = 0; i < plan.groupSizes.length; i++) {
+            int groupBlocks = plan.groupSizes[i];
+            int bitWidth = plan.groupBitWidths[i];
             int dataBits = groupBlocks * pack_size * bitWidth;
             totalSize += dataBits;
         }
@@ -350,7 +561,7 @@ public class BPDP {
         }
 
         // 写入分组数量 (32 bits)
-        writeBits(compressedData, bytePos, bitPos, plan.groupSizes.size(), 32);
+        writeBits(compressedData, bytePos, bitPos, plan.groupSizes.length, 32);
         bytePos += 4; // 32 bits = 4 bytes
 
         return bytePos;
@@ -363,9 +574,9 @@ public class BPDP {
         int bytePos = currentPos;
         int dataIndex = 0;
 
-        for (int groupIdx = 0; groupIdx < plan.groupSizes.size(); groupIdx++) {
-            int groupBlocks = plan.groupSizes.get(groupIdx);
-            int bitWidth = plan.groupBitWidths.get(groupIdx);
+        for (int groupIdx = 0; groupIdx < plan.groupSizes.length; groupIdx++) {
+            int groupBlocks = plan.groupSizes[groupIdx];
+            int bitWidth = plan.groupBitWidths[groupIdx];
 
             // 写入当前分组的packsize (optimalC bits)
             writeBits(compressedData, bytePos, bitPos, groupBlocks, plan.optimalC);
@@ -376,7 +587,7 @@ public class BPDP {
             }
 
             // 写入当前分组的位宽 (6 bits)
-            writeBits(compressedData, bytePos, bitPos, bitWidth, 6);
+            writeBits(compressedData, bytePos, bitPos, encodeBitWidthField(bitWidth), 6);
             bitPos += 6;
             if (bitPos >= 8) {
                 bytePos += bitPos / 8;
@@ -385,9 +596,9 @@ public class BPDP {
 
             // 压缩当前分组的数据
             int groupDataCount = groupBlocks * pack_size;
-            ArrayList<Integer> dataToPack = new ArrayList<>();
+            int[] dataToPack = new int[groupDataCount];
             for (int i = 0; i < groupDataCount; i++) {
-                dataToPack.add((int) paddedArray[dataIndex++]); // 注意：这里假设数据在int范围内
+                dataToPack[i] = (int) paddedArray[dataIndex++]; // 注意：这里假设数据在int范围内
             }
 
             // 使用bitpacking压缩 - 修复版本，支持任意数量的数据
@@ -412,15 +623,15 @@ public class BPDP {
     }
 
     // 修复后的bitPacking方法，支持任意数量的数据（不只是8的倍数）
-    public static int bitPacking(ArrayList<Integer> numbers, int start, int bit_width,
+    public static int bitPacking(int[] numbers, int start, int bit_width,
                                  int encode_pos, byte[] encoded_result, int startBitPos) {
-        int totalCount = numbers.size() - start;
+        int totalCount = numbers.length - start;
         int currentBytePos = encode_pos;
         int currentBitPos = startBitPos;
 
         // 处理所有数据，不只是8的倍数
         for (int i = 0; i < totalCount; i++) {
-            int value = numbers.get(start + i);
+            int value = numbers[start + i];
 
             // 按位写入
             for (int bit = bit_width - 1; bit >= 0; bit--) {
@@ -464,14 +675,22 @@ public class BPDP {
 
         // 写 numBits 位（numBits <= 64），value 的低 numBits 位被写出（big-endian bit order）
         void writeBits(long value, int numBits) {
-            for (int i = numBits - 1; i >= 0; --i) {
-                int bit = (int)((value >> i) & 1L);
-                data[bytePos] |= (byte)(bit << (7 - bitPos));
-                bitPos++;
+            if (numBits < 0 || numBits > 64) {
+                throw new IllegalArgumentException("numBits must be in [0,64]: " + numBits);
+            }
+            while (numBits > 0) {
+                int freeBits = 8 - bitPos;
+                int take = Math.min(freeBits, numBits);
+                int shift = numBits - take;
+                long mask = take == 64 ? ~0L : ((1L << take) - 1L);
+                int chunk = (int) ((value >>> shift) & mask);
+                data[bytePos] |= (byte) (chunk << (freeBits - take));
+                bitPos += take;
                 if (bitPos == 8) {
                     bitPos = 0;
                     bytePos++;
                 }
+                numBits -= take;
             }
         }
 
@@ -497,15 +716,23 @@ public class BPDP {
 
         // 读 numBits 位并作为 long 返回（numBits <= 64）
         long readBits(int numBits) {
+            if (numBits < 0 || numBits > 64) {
+                throw new IllegalArgumentException("numBits must be in [0,64]: " + numBits);
+            }
             long res = 0L;
-            for (int i = 0; i < numBits; ++i) {
-                int bit = (data[bytePos] >> (7 - bitPos)) & 1;
-                res = (res << 1) | bit;
-                bitPos++;
+            while (numBits > 0) {
+                int availableBits = 8 - bitPos;
+                int take = Math.min(availableBits, numBits);
+                int shift = availableBits - take;
+                int mask = (1 << take) - 1;
+                int chunk = ((data[bytePos] & 0xFF) >>> shift) & mask;
+                res = (res << take) | chunk;
+                bitPos += take;
                 if (bitPos == 8) {
                     bitPos = 0;
                     bytePos++;
                 }
+                numBits -= take;
             }
             return res;
         }
@@ -517,20 +744,35 @@ public class BPDP {
     // ---- 用新的 BitWriter/BitReader 来实现压缩/解压 ----
     public static byte[] compressWithOptimalPacking(long[] paddedArray, int[] bitWidths, int pack_size, int[] encodePos) {
         PackingPlan optimalPlan = computeOptimalPackingPlan(bitWidths, pack_size);
-        int totalSize = calculateTotalCompressedSize(optimalPlan, pack_size); // 以字节计
-        byte[] compressedData = new byte[totalSize + 8]; // 预留一点空间以防计算差异（安全余量）
+        return compressWithPackingPlan(paddedArray, optimalPlan, pack_size, encodePos);
+    }
+
+    /** Encode using an explicit grouping plan (DP or RL); bit layout identical to optimal DP compression. */
+    public static byte[] compressWithPackingPlan(
+            long[] paddedArray, PackingPlan plan, int pack_size, int[] encodePos) {
+        int plannedValues = 0;
+        for (int groupBlocks : plan.groupSizes) {
+            plannedValues += groupBlocks * pack_size;
+        }
+        if (plannedValues != paddedArray.length) {
+            throw new IllegalArgumentException(
+                    "Packing plan value count mismatch: plan=" + plannedValues + " data=" + paddedArray.length
+                            + " groups=" + plan.groupSizes.length);
+        }
+
+        int totalSize = calculateTotalCompressedSize(plan, pack_size);
+        byte[] compressedData = new byte[totalSize];
         BitWriter writer = new BitWriter(compressedData, 0);
 
-        // 写 C (6 bits) 和 groupCount(32 bits)
-        writer.writeBits(optimalPlan.optimalC, 6);
-        writer.writeBits(optimalPlan.groupSizes.size(), 32);
+        writer.writeBits(plan.optimalC, 6);
+        writer.writeBits(plan.groupSizes.length, 32);
 
         int dataIndex = 0;
-        for (int gi = 0; gi < optimalPlan.groupSizes.size(); ++gi) {
-            int groupBlocks = optimalPlan.groupSizes.get(gi);
-            int bitWidth = optimalPlan.groupBitWidths.get(gi);
-            writer.writeBits(groupBlocks, optimalPlan.optimalC);
-            writer.writeBits(bitWidth, 6);
+        for (int gi = 0; gi < plan.groupSizes.length; ++gi) {
+            int groupBlocks = plan.groupSizes[gi];
+            int bitWidth = plan.groupBitWidths[gi];
+            writer.writeBits(groupBlocks, plan.optimalC);
+            writer.writeBits(encodeBitWidthField(bitWidth), 6);
 
             int groupDataCount = groupBlocks * pack_size;
             for (int i = 0; i < groupDataCount; ++i) {
@@ -541,21 +783,29 @@ public class BPDP {
         }
 
         int finalBytes = writer.bytesWritten();
-        if (finalBytes > totalSize) {
-            // 警告：计算函数可能低估了实际大小。这里扩容并返回实际大小。
-            System.err.println(String.format("Warning: calculateTotalCompressedSize underestimated bytes: estimated=%d actual=%d. Returning actual length.",
-                    totalSize, finalBytes));
-            byte[] out = new byte[finalBytes];
-            System.arraycopy(compressedData, 0, out, 0, finalBytes);
-            encodePos[0] = finalBytes;
-            return out;
-        } else {
-            // 返回精确长度拷贝
-            byte[] out = new byte[finalBytes];
-            System.arraycopy(compressedData, 0, out, 0, finalBytes);
-            encodePos[0] = finalBytes;
-            return out;
+        int actualBits = writer.getBytePos() * 8 + writer.getBitPos();
+        int expectedBits = 6 + 32;
+        for (int gi = 0; gi < plan.groupSizes.length; ++gi) {
+            expectedBits += plan.optimalC + 6;
+            expectedBits += plan.groupSizes[gi] * pack_size * plan.groupBitWidths[gi];
         }
+        if (actualBits != expectedBits) {
+            throw new IllegalStateException(
+                    "Bitstream length mismatch: wrote " + actualBits + " expected " + expectedBits);
+        }
+        if (finalBytes > totalSize) {
+            throw new IllegalStateException(String.format(
+                    "calculateTotalCompressedSize underestimated bytes: estimated=%d actual=%d.",
+                    totalSize, finalBytes));
+        }
+        if (finalBytes == compressedData.length) {
+            encodePos[0] = finalBytes;
+            return compressedData;
+        }
+        byte[] out = new byte[finalBytes];
+        System.arraycopy(compressedData, 0, out, 0, finalBytes);
+        encodePos[0] = finalBytes;
+        return out;
     }
 
     public static long[] decompressWithOptimalPacking(byte[] compressedData, int originalLength, int pack_size) {
@@ -580,7 +830,7 @@ public class BPDP {
             }
 
             int groupBlocks = (int) reader.readBits(C);
-            int bitWidth = (int) reader.readBits(6);
+            int bitWidth = decodeBitWidthField((int) reader.readBits(6));
             if (bitWidth < 0 || bitWidth > 64) throw new IllegalArgumentException("Invalid bitWidth: " + bitWidth);
 
             long groupDataCount = (long) groupBlocks * (long) pack_size;
@@ -767,18 +1017,15 @@ public class BPDP {
         return new TSDIFFEncodedResult(result, firstValue, minDiff);
     }
     public static long[] ts2diffDecode(long[] result, long firstValue, long minDiff) {
-        if (result == null || result.length == 0) {
+        if (result == null) {
             return new long[0];
         }
 
-        long[] numbers = new long[result.length];
+        long[] numbers = new long[result.length + 1];
         numbers[0] = firstValue;
 
-        for (int i = 1; i < result.length; i++) {
-            // ZigZag解码
-            long n = result[i];
-            long normalizedDiff = (n >>> 1) ^ -(n & 1);
-
+        for (int i = 1; i < numbers.length; i++) {
+            long normalizedDiff = result[i - 1];
             // 还原原始差分
             long diff = normalizedDiff + minDiff;
 
@@ -886,19 +1133,8 @@ public class BPDP {
                         int[] bitWidths = new int[actual_length / pack_size]; // 存储每pack_size个值的位宽结果
 
                         for (int scaledInts_i = 0; scaledInts_i < actual_length; scaledInts_i += pack_size) {
-                            // 1. 找出当前pack_size个元素中的最大值
-                            long maxInGroup = 0;
-                            for (int scaledInts_j = scaledInts_i; scaledInts_j < scaledInts_i + pack_size; scaledInts_j++) {
-                                if (paddedArray[scaledInts_j] > maxInGroup) {
-                                    maxInGroup = paddedArray[scaledInts_j];
-                                }
-                            }
-
-                            // 2. 计算该最大值的去头零位宽
-                            int bitWidth = 64 - Long.numberOfLeadingZeros(maxInGroup);
-
-                            // 3. 存储结果
-                            bitWidths[scaledInts_i / pack_size] = bitWidth;
+                                bitWidths[scaledInts_i / pack_size] =
+                                        BP.groupBitWidthForPack(paddedArray, scaledInts_i, pack_size);
                         }
                         int[] encodePos = new int[1];
                         byte[] compressedData = compressWithOptimalPacking(paddedArray, bitWidths, pack_size, encodePos);
@@ -1036,19 +1272,8 @@ public class BPDP {
                         int[] bitWidths = new int[actual_length / pack_size]; // 存储每pack_size个值的位宽结果
 
                         for (int scaledInts_i = 0; scaledInts_i < actual_length; scaledInts_i += pack_size) {
-                            // 1. 找出当前pack_size个元素中的最大值
-                            long maxInGroup = 0;
-                            for (int scaledInts_j = scaledInts_i; scaledInts_j < scaledInts_i + pack_size; scaledInts_j++) {
-                                if (paddedArray[scaledInts_j] > maxInGroup) {
-                                    maxInGroup = paddedArray[scaledInts_j];
-                                }
-                            }
-
-                            // 2. 计算该最大值的去头零位宽
-                            int bitWidth = 64 - Long.numberOfLeadingZeros(maxInGroup);
-
-                            // 3. 存储结果
-                            bitWidths[scaledInts_i / pack_size] = bitWidth;
+                                bitWidths[scaledInts_i / pack_size] =
+                                        BP.groupBitWidthForPack(paddedArray, scaledInts_i, pack_size);
                         }
                         int[] encodePos = new int[1];
                         byte[] compressedData = compressWithOptimalPacking(paddedArray, bitWidths, pack_size, encodePos);
@@ -1194,36 +1419,15 @@ public class BPDP {
 
                             long startTime = System.nanoTime();
 //                            long[] scaledInts = sprintz(scaledInt);
-                            int remainder = scaledInts.length % pack_size;
-                            int paddingLength = (remainder == 0) ? 0 : pack_size - remainder;
-
-                            // 创建新数组，长度补齐为pack_size的倍数
-                            long[] paddedArray = new long[scaledInts.length + paddingLength];
-                            System.arraycopy(scaledInts, 0, paddedArray, 0, scaledInts.length);
-                            int actual_length = paddedArray.length;
-                            int[] bitWidths = new int[actual_length / pack_size];
-
-                            for (int scaledInts_i = 0; scaledInts_i < actual_length; scaledInts_i += pack_size) {
-                                long maxInGroup = 0;
-                                for (int scaledInts_j = scaledInts_i; scaledInts_j < scaledInts_i + pack_size; scaledInts_j++) {
-                                    if (paddedArray[scaledInts_j] > maxInGroup) {
-                                        maxInGroup = paddedArray[scaledInts_j];
-                                    }
-                                }
-
-                                int bitWidth = 64 - Long.numberOfLeadingZeros(maxInGroup);
-                                bitWidths[scaledInts_i / pack_size] = bitWidth;
-                            }
-
-                            int[] encodePos = new int[1];
-                            byte[] res = compressWithOptimalPacking(paddedArray, bitWidths, pack_size, encodePos);
-                            BigDecimal cur_cost = BigDecimal.valueOf(encodePos[0]* 8L);
+                            ExactOracleCompressionResult res = compressWithBestExactPacking(scaledInts);
+                            pack_size = res.packSize;
+                            BigDecimal cur_cost = BigDecimal.valueOf(res.encodedBits);
                             long duration = System.nanoTime() - startTime;
                             modelTime = modelTime.add(BigDecimal.valueOf(duration));
                             modelCost = modelCost.add(cur_cost);
 
                             long decodeStart = System.nanoTime();
-                            decompressWithOptimalPacking(res, paddedArray.length, pack_size);
+                            decompressExactOracle(res);
                             long decodeDuration = System.nanoTime() - decodeStart;
                             modelDecodeTime = modelDecodeTime.add(BigDecimal.valueOf(decodeDuration));
                         }
@@ -1339,19 +1543,8 @@ public class BPDP {
                         int[] bitWidths = new int[actual_length / pack_size]; // 存储每pack_size个值的位宽结果
 
                         for (int scaledInts_i = 0; scaledInts_i < actual_length; scaledInts_i += pack_size) {
-                            // 1. 找出当前pack_size个元素中的最大值
-                            long maxInGroup = 0;
-                            for (int scaledInts_j = scaledInts_i; scaledInts_j < scaledInts_i + pack_size; scaledInts_j++) {
-                                if (paddedArray[scaledInts_j] > maxInGroup) {
-                                    maxInGroup = paddedArray[scaledInts_j];
-                                }
-                            }
-
-                            // 2. 计算该最大值的去头零位宽
-                            int bitWidth = 64 - Long.numberOfLeadingZeros(maxInGroup);
-
-                            // 3. 存储结果
-                            bitWidths[scaledInts_i / pack_size] = bitWidth;
+                                bitWidths[scaledInts_i / pack_size] =
+                                        BP.groupBitWidthForPack(paddedArray, scaledInts_i, pack_size);
                         }
                         int[] encodePos = new int[1];
                         byte[] compressedData = compressWithOptimalPacking(paddedArray, bitWidths, pack_size, encodePos);
@@ -1493,19 +1686,8 @@ public class BPDP {
                         int[] bitWidths = new int[actual_length / pack_size]; // 存储每pack_size个值的位宽结果
 
                         for (int scaledInts_i = 0; scaledInts_i < actual_length; scaledInts_i += pack_size) {
-                            // 1. 找出当前pack_size个元素中的最大值
-                            long maxInGroup = 0;
-                            for (int scaledInts_j = scaledInts_i; scaledInts_j < scaledInts_i + pack_size; scaledInts_j++) {
-                                if (paddedArray[scaledInts_j] > maxInGroup) {
-                                    maxInGroup = paddedArray[scaledInts_j];
-                                }
-                            }
-
-                            // 2. 计算该最大值的去头零位宽
-                            int bitWidth = 64 - Long.numberOfLeadingZeros(maxInGroup);
-
-                            // 3. 存储结果
-                            bitWidths[scaledInts_i / pack_size] = bitWidth;
+                                bitWidths[scaledInts_i / pack_size] =
+                                        BP.groupBitWidthForPack(paddedArray, scaledInts_i, pack_size);
                         }
                         int[] encodePos = new int[1];
                         byte[] compressedData = compressWithOptimalPacking(paddedArray, bitWidths, pack_size, encodePos);
@@ -1651,36 +1833,15 @@ public class BPDP {
 
                             long startTime = System.nanoTime();
                             long[] scaledInts = zigzag(scaledInt);
-                            int remainder = 0;
-                            int paddingLength = 0;
-
-                            // 创建新数组，长度补齐为pack_size的倍数
-                            long[] paddedArray = new long[scaledInts.length + paddingLength];
-                            System.arraycopy(scaledInts, 0, paddedArray, 0, scaledInts.length);
-                            int actual_length = paddedArray.length;
-                            int[] bitWidths = new int[actual_length];
-
-                            for (int scaledInts_i = 0; scaledInts_i < actual_length; scaledInts_i += 1) {
-                                long maxInGroup = 0;
-                                for (int scaledInts_j = scaledInts_i; scaledInts_j < scaledInts_i + 1; scaledInts_j++) {
-                                    if (paddedArray[scaledInts_j] > maxInGroup) {
-                                        maxInGroup = paddedArray[scaledInts_j];
-                                    }
-                                }
-
-                                int bitWidth = 64 - Long.numberOfLeadingZeros(maxInGroup);
-                                bitWidths[scaledInts_i] = bitWidth;
-                            }
-
-                            int[] encodePos = new int[1];
-                            byte[] res = compressWithOptimalPacking(paddedArray, bitWidths, 1, encodePos);
-                            BigDecimal cur_cost = BigDecimal.valueOf(encodePos[0] * 8L);
+                            ExactOracleCompressionResult res = compressWithBestExactPacking(scaledInts);
+                            pack_size = res.packSize;
+                            BigDecimal cur_cost = BigDecimal.valueOf(res.encodedBits);
                             long duration = System.nanoTime() - startTime;
                             modelTime = modelTime.add(BigDecimal.valueOf(duration));
                             modelCost = modelCost.add(cur_cost);
 
                             long decodeStart = System.nanoTime();
-                            long[] decoded = decompressWithOptimalPacking(res, paddedArray.length, 1);
+                            long[] decoded = decompressExactOracle(res);
                             zigzagDecode(decoded);
                             long decodeDuration = System.nanoTime() - decodeStart;
                             modelDecodeTime = modelDecodeTime.add(BigDecimal.valueOf(decodeDuration));
@@ -1799,19 +1960,8 @@ public class BPDP {
                         int[] bitWidths = new int[actual_length / pack_size]; // 存储每pack_size个值的位宽结果
 
                         for (int scaledInts_i = 0; scaledInts_i < actual_length; scaledInts_i += pack_size) {
-                            // 1. 找出当前pack_size个元素中的最大值
-                            long maxInGroup = 0;
-                            for (int scaledInts_j = scaledInts_i; scaledInts_j < scaledInts_i + pack_size; scaledInts_j++) {
-                                if (paddedArray[scaledInts_j] > maxInGroup) {
-                                    maxInGroup = paddedArray[scaledInts_j];
-                                }
-                            }
-
-                            // 2. 计算该最大值的去头零位宽
-                            int bitWidth = 64 - Long.numberOfLeadingZeros(maxInGroup);
-
-                            // 3. 存储结果
-                            bitWidths[scaledInts_i / pack_size] = bitWidth;
+                                bitWidths[scaledInts_i / pack_size] =
+                                        BP.groupBitWidthForPack(paddedArray, scaledInts_i, pack_size);
                         }
                         int[] encodePos = new int[1];
                         byte[] compressedData = compressWithOptimalPacking(paddedArray, bitWidths, pack_size, encodePos);
@@ -1952,19 +2102,8 @@ public class BPDP {
                         int[] bitWidths = new int[actual_length / pack_size]; // 存储每pack_size个值的位宽结果
 
                         for (int scaledInts_i = 0; scaledInts_i < actual_length; scaledInts_i += pack_size) {
-                            // 1. 找出当前pack_size个元素中的最大值
-                            long maxInGroup = 0;
-                            for (int scaledInts_j = scaledInts_i; scaledInts_j < scaledInts_i + pack_size; scaledInts_j++) {
-                                if (paddedArray[scaledInts_j] > maxInGroup) {
-                                    maxInGroup = paddedArray[scaledInts_j];
-                                }
-                            }
-
-                            // 2. 计算该最大值的去头零位宽
-                            int bitWidth = 64 - Long.numberOfLeadingZeros(maxInGroup);
-
-                            // 3. 存储结果
-                            bitWidths[scaledInts_i / pack_size] = bitWidth;
+                                bitWidths[scaledInts_i / pack_size] =
+                                        BP.groupBitWidthForPack(paddedArray, scaledInts_i, pack_size);
                         }
                         int[] encodePos = new int[1];
                         byte[] compressedData = compressWithOptimalPacking(paddedArray, bitWidths, pack_size, encodePos);
@@ -2110,36 +2249,15 @@ public class BPDP {
                             long startTime = System.nanoTime();
                             SprintzEncodedResult ser = sprintz(scaledInt);
                             long[] scaledInts = ser.getEncodedData();
-                            int remainder = 0;
-                            int paddingLength = 0;
-
-                            // 创建新数组，长度补齐为pack_size的倍数
-                            long[] paddedArray = new long[scaledInts.length + paddingLength];
-                            System.arraycopy(scaledInts, 0, paddedArray, 0, scaledInts.length);
-                            int actual_length = paddedArray.length;
-                            int[] bitWidths = new int[actual_length / pack_size];
-
-                            for (int scaledInts_i = 0; scaledInts_i < actual_length; scaledInts_i += pack_size) {
-                                long maxInGroup = 0;
-                                for (int scaledInts_j = scaledInts_i; scaledInts_j < scaledInts_i + pack_size; scaledInts_j++) {
-                                    if (paddedArray[scaledInts_j] > maxInGroup) {
-                                        maxInGroup = paddedArray[scaledInts_j];
-                                    }
-                                }
-
-                                int bitWidth = 64 - Long.numberOfLeadingZeros(maxInGroup);
-                                bitWidths[scaledInts_i / pack_size] = bitWidth;
-                            }
-
-                            int[] encodePos = new int[1];
-                            byte[] res = compressWithOptimalPacking(paddedArray, bitWidths, pack_size, encodePos);
-                            BigDecimal cur_cost = BigDecimal.valueOf(encodePos[0] * 8);
+                            ExactOracleCompressionResult res = compressWithBestExactPacking(scaledInts);
+                            pack_size = res.packSize;
+                            BigDecimal cur_cost = BigDecimal.valueOf(res.encodedBits);
                             long duration = System.nanoTime() - startTime;
                             modelTime = modelTime.add(BigDecimal.valueOf(duration));
                             modelCost = modelCost.add(cur_cost);
 
                             long decodeStart = System.nanoTime();
-                            long[] decoded = decompressWithOptimalPacking(res, paddedArray.length, pack_size);
+                            long[] decoded = decompressExactOracle(res);
                             sprintzDecode(decoded, ser.getFirstValue());
                             long decodeDuration = System.nanoTime() - decodeStart;
                             modelDecodeTime = modelDecodeTime.add(BigDecimal.valueOf(decodeDuration));
@@ -2257,19 +2375,8 @@ public class BPDP {
                         int[] bitWidths = new int[actual_length / pack_size]; // 存储每pack_size个值的位宽结果
 
                         for (int scaledInts_i = 0; scaledInts_i < actual_length; scaledInts_i += pack_size) {
-                            // 1. 找出当前pack_size个元素中的最大值
-                            long maxInGroup = 0;
-                            for (int scaledInts_j = scaledInts_i; scaledInts_j < scaledInts_i + pack_size; scaledInts_j++) {
-                                if (paddedArray[scaledInts_j] > maxInGroup) {
-                                    maxInGroup = paddedArray[scaledInts_j];
-                                }
-                            }
-
-                            // 2. 计算该最大值的去头零位宽
-                            int bitWidth = 64 - Long.numberOfLeadingZeros(maxInGroup);
-
-                            // 3. 存储结果
-                            bitWidths[scaledInts_i / pack_size] = bitWidth;
+                                bitWidths[scaledInts_i / pack_size] =
+                                        BP.groupBitWidthForPack(paddedArray, scaledInts_i, pack_size);
                         }
                         int[] encodePos = new int[1];
                         byte[] compressedData = compressWithOptimalPacking(paddedArray, bitWidths, pack_size, encodePos);
@@ -2385,7 +2492,7 @@ public class BPDP {
                 BigDecimal modelCost = BigDecimal.ZERO;
                 BigDecimal encodeTime = BigDecimal.ZERO;
                 BigDecimal decodeTime = BigDecimal.ZERO;
-                int chunksize = CHUNK_SIZE -1;
+                int chunksize = CHUNK_SIZE + 1;
                 for (int j = 0; j < time_of_repeat; j++) {
                     for (int i = 0; i < numbers.size(); i += chunksize) {
 
@@ -2411,19 +2518,8 @@ public class BPDP {
                         int[] bitWidths = new int[actual_length / pack_size]; // 存储每pack_size个值的位宽结果
 
                         for (int scaledInts_i = 0; scaledInts_i < actual_length; scaledInts_i += pack_size) {
-                            // 1. 找出当前pack_size个元素中的最大值
-                            long maxInGroup = 0;
-                            for (int scaledInts_j = scaledInts_i; scaledInts_j < scaledInts_i + pack_size; scaledInts_j++) {
-                                if (paddedArray[scaledInts_j] > maxInGroup) {
-                                    maxInGroup = paddedArray[scaledInts_j];
-                                }
-                            }
-
-                            // 2. 计算该最大值的去头零位宽
-                            int bitWidth = 64 - Long.numberOfLeadingZeros(maxInGroup);
-
-                            // 3. 存储结果
-                            bitWidths[scaledInts_i / pack_size] = bitWidth;
+                                bitWidths[scaledInts_i / pack_size] =
+                                        BP.groupBitWidthForPack(paddedArray, scaledInts_i, pack_size);
                         }
                         int[] encodePos = new int[1];
                         byte[] compressedData = compressWithOptimalPacking(paddedArray, bitWidths, pack_size, encodePos);
@@ -2571,35 +2667,15 @@ public class BPDP {
                             TSDIFFEncodedResult ter = ts2diff(scaledInt);
                             long[] scaledInts = ter.getEncodedData();
 
-                            int paddingLength = 0;
-
-                            // 创建新数组，长度补齐为pack_size的倍数
-                            long[] paddedArray = new long[scaledInts.length + paddingLength];
-                            System.arraycopy(scaledInts, 0, paddedArray, 0, scaledInts.length);
-                            int actual_length = paddedArray.length;
-                            int[] bitWidths = new int[actual_length / pack_size];
-
-                            for (int scaledInts_i = 0; scaledInts_i < actual_length; scaledInts_i += pack_size) {
-                                long maxInGroup = 0;
-                                for (int scaledInts_j = scaledInts_i; scaledInts_j < scaledInts_i + pack_size; scaledInts_j++) {
-                                    if (paddedArray[scaledInts_j] > maxInGroup) {
-                                        maxInGroup = paddedArray[scaledInts_j];
-                                    }
-                                }
-
-                                int bitWidth = 64 - Long.numberOfLeadingZeros(maxInGroup);
-                                bitWidths[scaledInts_i / pack_size] = bitWidth;
-                            }
-
-                            int[] encodePos = new int[1];
-                            byte[] res = compressWithOptimalPacking(paddedArray, bitWidths, pack_size, encodePos);
-                            BigDecimal cur_cost = BigDecimal.valueOf(encodePos[0] * 8);
+                            ExactOracleCompressionResult res = compressWithBestExactPacking(scaledInts);
+                            pack_size = res.packSize;
+                            BigDecimal cur_cost = BigDecimal.valueOf(res.encodedBits);
                             long duration = System.nanoTime() - startTime;
                             modelTime = modelTime.add(BigDecimal.valueOf(duration));
                             modelCost = modelCost.add(cur_cost);
 
                             long decodeStart = System.nanoTime();
-                            long[] decoded = decompressWithOptimalPacking(res, paddedArray.length, pack_size);
+                            long[] decoded = decompressExactOracle(res);
                             ts2diffDecode(decoded, ter.getFirstValue(), ter.getMinDiff());
                             long decodeDuration = System.nanoTime() - decodeStart;
                             modelDecodeTime = modelDecodeTime.add(BigDecimal.valueOf(decodeDuration));
@@ -2673,7 +2749,7 @@ public class BPDP {
             csvReader.close();
 
             // 处理每个chunk
-            List<List<Integer>> allGroupSizes = new ArrayList<>();
+            List<int[]> allGroupSizes = new ArrayList<>();
 
             for (int i = 0; i < numbers.size(); i += CHUNK_SIZE) {
                 List<String> chunkNumbers = numbers.subList(i, Math.min(i + CHUNK_SIZE, numbers.size()));
@@ -2715,9 +2791,9 @@ public class BPDP {
 
             // 找到最大分组数量
             int maxGroups = 0;
-            for (List<Integer> groups : allGroupSizes) {
-                if (groups.size() > maxGroups) {
-                    maxGroups = groups.size();
+            for (int[] groups : allGroupSizes) {
+                if (groups.length > maxGroups) {
+                    maxGroups = groups.length;
                 }
             }
 
@@ -2725,9 +2801,9 @@ public class BPDP {
             for (int row = 0; row < maxGroups; row++) {
                 String[] record = new String[allGroupSizes.size()];
                 for (int col = 0; col < allGroupSizes.size(); col++) {
-                    List<Integer> groups = allGroupSizes.get(col);
-                    if (row < groups.size()) {
-                        record[col] = String.valueOf(groups.get(row));
+                    int[] groups = allGroupSizes.get(col);
+                    if (row < groups.length) {
+                        record[col] = String.valueOf(groups[row]);
                     } else {
                         record[col] = "";
                     }
@@ -2747,16 +2823,26 @@ public class BPDP {
             statsWriter.writeRecord(statsHeader);
 
             for (int i = 0; i < allGroupSizes.size(); i++) {
-                List<Integer> groups = allGroupSizes.get(i);
-                if (groups.isEmpty()) continue;
+                int[] groups = allGroupSizes.get(i);
+                if (groups.length == 0) continue;
 
-                double avg = groups.stream().mapToInt(Integer::intValue).average().orElse(0);
-                int min = groups.stream().mapToInt(Integer::intValue).min().orElse(0);
-                int max = groups.stream().mapToInt(Integer::intValue).max().orElse(0);
+                int sum = 0;
+                int min = Integer.MAX_VALUE;
+                int max = Integer.MIN_VALUE;
+                for (int group : groups) {
+                    sum += group;
+                    if (group < min) {
+                        min = group;
+                    }
+                    if (group > max) {
+                        max = group;
+                    }
+                }
+                double avg = sum / (double) groups.length;
 
                 String[] statsRecord = {
                         "Chunk_" + (i+1),
-                        String.valueOf(groups.size()),
+                        String.valueOf(groups.length),
                         String.format("%.2f", avg),
                         String.valueOf(min),
                         String.valueOf(max)

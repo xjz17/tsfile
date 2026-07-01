@@ -1,4 +1,4 @@
-package org.apache.iotdb.tsfile.encoding;
+package org.apache.tsfile.encoding;
 
 import com.csvreader.CsvReader;
 import com.csvreader.CsvWriter;
