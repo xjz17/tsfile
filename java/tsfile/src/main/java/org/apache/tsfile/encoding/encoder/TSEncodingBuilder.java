@@ -80,8 +80,6 @@ public abstract class TSEncodingBuilder {
         return new RLBE();
       case CAMEL:
         return new Camel();
-      case SUBCOLUMN:
-        return new SubColumn();
       default:
         throw new UnsupportedOperationException("Unsupported encoding: " + type);
     }
@@ -383,29 +381,6 @@ public abstract class TSEncodingBuilder {
           return new DoubleRLBE();
         default:
           throw new UnSupportedDataTypeException(String.format(ERROR_MSG, TSEncoding.RLBE, type));
-      }
-    }
-
-    @Override
-    public void initFromProps(Map<String, String> props) {
-      // do nothing
-    }
-  }
-
-  public static class SubColumn extends TSEncodingBuilder {
-
-    @Override
-    public Encoder getEncoder(TSDataType type) {
-      switch (type) {
-        case INT32:
-        case DATE:
-          return new IntSubColumnEncoder();
-        case INT64:
-        case TIMESTAMP:
-          return new LongSubColumnEncoder();
-        default:
-          throw new UnSupportedDataTypeException(
-              String.format(ERROR_MSG, TSEncoding.SUBCOLUMN, type));
       }
     }
 

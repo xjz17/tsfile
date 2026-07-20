@@ -313,10 +313,10 @@ public class VarBlockTest {
 
     @Test
     public void testBP() throws IOException {
-        String parent_dir = "D:/github/xjz17/subcolumn/elf_resources/dataset/";
-        // String parent_dir = "D:/compress-subcolumn/dataset/";
+        String parent_dir = "D:/encoding-benchmark/dataset/";
+        // String parent_dir = "D:/encoding-benchmark/dataset/";
 
-        String output_parent_dir = "D:/compress-subcolumn/";
+        String output_parent_dir = "D:/encoding-benchmark/";
 
         String outputPath = output_parent_dir + "test_vb.csv";
 

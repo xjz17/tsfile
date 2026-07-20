@@ -288,9 +288,9 @@ public class BPTest {
     @Test
     public void testBP() throws IOException {
         String parent_dir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/";
-        // String parent_dir = "D:/compress-subcolumn/dataset/";
+        // String parent_dir = "D:/encoding-benchmark/dataset/";
 
-        String output_parent_dir = "D:/compress-subcolumn/";
+        String output_parent_dir = "D:/encoding-benchmark/";
 
         String outputPath = output_parent_dir + "test_bp.csv";
 
@@ -393,7 +393,7 @@ public class BPTest {
 
             String[] record = {
                     datasetName,
-                    "Subcolumn",
+                    "BP",
                     String.valueOf(encodeTime),
                     String.valueOf(decodeTime),
                     String.valueOf(data1.size()),
