@@ -184,6 +184,24 @@ public abstract class Decoder {
           default:
             throw new TsFileDecodingException(String.format(ERROR_MSG, encoding, dataType));
         }
+      case VLBP_DP:
+      case VLBP_RL:
+      case SPRINTZ_VLBP_DP:
+      case SPRINTZ_VLBP_RL:
+      case ZIGZAG_VLBP_DP:
+      case ZIGZAG_VLBP_RL:
+      case TS2DIFF_VLBP_DP:
+      case TS2DIFF_VLBP_RL:
+        switch (dataType) {
+          case INT32:
+          case DATE:
+            return new IntVlbpDecoder(encoding);
+          case INT64:
+          case TIMESTAMP:
+            return new LongVlbpDecoder(encoding);
+          default:
+            throw new TsFileDecodingException(String.format(ERROR_MSG, encoding, dataType));
+        }
       default:
         throw new TsFileDecodingException(String.format(ERROR_MSG, encoding, dataType));
     }

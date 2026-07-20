@@ -80,6 +80,15 @@ public abstract class TSEncodingBuilder {
         return new RLBE();
       case CAMEL:
         return new Camel();
+      case VLBP_DP:
+      case VLBP_RL:
+      case SPRINTZ_VLBP_DP:
+      case SPRINTZ_VLBP_RL:
+      case ZIGZAG_VLBP_DP:
+      case ZIGZAG_VLBP_RL:
+      case TS2DIFF_VLBP_DP:
+      case TS2DIFF_VLBP_RL:
+        return new Vlbp(type);
       default:
         throw new UnsupportedOperationException("Unsupported encoding: " + type);
     }
@@ -381,6 +390,34 @@ public abstract class TSEncodingBuilder {
           return new DoubleRLBE();
         default:
           throw new UnSupportedDataTypeException(String.format(ERROR_MSG, TSEncoding.RLBE, type));
+      }
+    }
+
+    @Override
+    public void initFromProps(Map<String, String> props) {
+      // do nothing
+    }
+  }
+
+  public static class Vlbp extends TSEncodingBuilder {
+
+    private final TSEncoding encoding;
+
+    Vlbp(TSEncoding encoding) {
+      this.encoding = encoding;
+    }
+
+    @Override
+    public Encoder getEncoder(TSDataType type) {
+      switch (type) {
+        case INT32:
+        case DATE:
+          return new IntVlbpEncoder(encoding);
+        case INT64:
+        case TIMESTAMP:
+          return new LongVlbpEncoder(encoding);
+        default:
+          throw new UnSupportedDataTypeException(String.format(ERROR_MSG, encoding, type));
       }
     }
 

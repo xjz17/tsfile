@@ -42,7 +42,15 @@ public enum TSEncoding {
   CHIMP((byte) 11),
   SPRINTZ((byte) 12),
   RLBE((byte) 13),
-  CAMEL((byte) 14);
+  CAMEL((byte) 14),
+  VLBP_DP((byte) 15),
+  VLBP_RL((byte) 16),
+  SPRINTZ_VLBP_DP((byte) 17),
+  SPRINTZ_VLBP_RL((byte) 18),
+  ZIGZAG_VLBP_DP((byte) 19),
+  ZIGZAG_VLBP_RL((byte) 20),
+  TS2DIFF_VLBP_DP((byte) 21),
+  TS2DIFF_VLBP_RL((byte) 22);
   private final byte type;
 
   @SuppressWarnings("java:S2386") // used by other projects
@@ -64,6 +72,14 @@ public enum TSEncoding {
     intSet.add(TSEncoding.CHIMP);
     intSet.add(TSEncoding.SPRINTZ);
     intSet.add(TSEncoding.RLBE);
+    intSet.add(TSEncoding.VLBP_DP);
+    intSet.add(TSEncoding.VLBP_RL);
+    intSet.add(TSEncoding.SPRINTZ_VLBP_DP);
+    intSet.add(TSEncoding.SPRINTZ_VLBP_RL);
+    intSet.add(TSEncoding.ZIGZAG_VLBP_DP);
+    intSet.add(TSEncoding.ZIGZAG_VLBP_RL);
+    intSet.add(TSEncoding.TS2DIFF_VLBP_DP);
+    intSet.add(TSEncoding.TS2DIFF_VLBP_RL);
 
     TYPE_SUPPORTED_ENCODINGS.put(TSDataType.INT32, intSet);
     TYPE_SUPPORTED_ENCODINGS.put(TSDataType.INT64, intSet);
@@ -144,6 +160,22 @@ public enum TSEncoding {
         return TSEncoding.RLBE;
       case 14:
         return TSEncoding.CAMEL;
+      case 15:
+        return TSEncoding.VLBP_DP;
+      case 16:
+        return TSEncoding.VLBP_RL;
+      case 17:
+        return TSEncoding.SPRINTZ_VLBP_DP;
+      case 18:
+        return TSEncoding.SPRINTZ_VLBP_RL;
+      case 19:
+        return TSEncoding.ZIGZAG_VLBP_DP;
+      case 20:
+        return TSEncoding.ZIGZAG_VLBP_RL;
+      case 21:
+        return TSEncoding.TS2DIFF_VLBP_DP;
+      case 22:
+        return TSEncoding.TS2DIFF_VLBP_RL;
       default:
         throw new IllegalArgumentException("Invalid input: " + encoding);
     }
