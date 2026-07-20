@@ -5,8 +5,10 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Whitelist of CSV basenames under {@code ElfTestData_camel} used by encoding benchmarks. Keep in
- * sync with encoding-block README / fig10_vary_all_pack_size.py dataset_mapping.
+ * Whitelist of CSV basenames under {@code ElfTestData_camel} (LaTeX {@code table:dataset}).
+ *
+ * <p>Active rows only (10 datasets). Excluded: City-temp (CT). Keep in sync with {@code
+ * paper_datasets.py} / plotting scripts {@code dataset_mapping}.
  */
 public final class BenchmarkDatasetFilter {
 
@@ -15,16 +17,16 @@ public final class BenchmarkDatasetFilter {
     static {
         String[] names =
                 new String[] {
-                    "TH-Climate.csv",
-                    "TY-Transport.csv",
-                    "USGS-Earthquakes.csv",
-                    "Stocks-UK.csv",
-                    "PM10-dust.csv",
-                    "Food-price.csv",
-                    "EPM-Education.csv",
-                    "Cyber-Vehicle.csv",
-                    "CS-Sensors.csv",
-                    "Blockchain-tr.csv"
+                    "Blockchain-tr.csv", // BTR
+                    "CS-Sensors.csv", // CS
+                    "Cyber-Vehicle.csv", // CV
+                    "EPM-Education.csv", // EE
+                    "Food-price.csv", // FP
+                    "PM10-dust.csv", // PM10
+                    "Stocks-UK.csv", // SUK
+                    "TH-Climate.csv", // TC
+                    "TY-Transport.csv", // TT
+                    "USGS-Earthquakes.csv", // UE
                 };
         Collections.addAll(ALLOWED_CSV, names);
     }
