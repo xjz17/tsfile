@@ -1060,8 +1060,8 @@ public class BPDP {
     public void BPDP0() throws IOException {
         // 示例数据（实际应替换为真实时间序列）
         System.out.println("\nPerformance Testing with All Pack Sizes (1-16)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BPDP";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BPDP";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -1199,8 +1199,8 @@ public class BPDP {
     public void TestAllPackSize() throws IOException {
         // 示例数据（实际应替换为真实时间序列）
         System.out.println("\nPerformance Testing with All Pack Sizes (1-16)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BPDP_all_pack_size";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BPDP_all_pack_size";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -1330,8 +1330,8 @@ public class BPDP {
     @Test
     public void TestVariableChunkSize() throws IOException {
         System.out.println("\nPerformance Testing with Variable Chunk Sizes...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BPDP_vary_m";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BPDP_vary_m";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -1468,8 +1468,8 @@ public class BPDP {
     public void ZigzagDP() throws IOException {
         // 示例数据（实际应替换为真实时间序列）
         System.out.println("\nPerformance Testing with All Pack Sizes (1-16)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_DP_Zigzag";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_DP_Zigzag";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -1611,8 +1611,8 @@ public class BPDP {
     public void ZigzagVarPackSize() throws IOException {
         // 示例数据（实际应替换为真实时间序列）
         System.out.println("\nPerformance Testing with All Pack Sizes (1-16)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_DP_Zigzag_all_pack_size";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_DP_Zigzag_all_pack_size";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -1743,8 +1743,8 @@ public class BPDP {
     @Test
     public void ZigzagVarChunkSize() throws IOException {
         System.out.println("\nPerformance Testing with Variable Chunk Sizes...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_DP_Zigzag_vary_m";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_DP_Zigzag_vary_m";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -1884,8 +1884,8 @@ public class BPDP {
     public void SprintzDP() throws IOException {
         // 示例数据（实际应替换为真实时间序列）
         System.out.println("\nPerformance Testing with All Pack Sizes (1-16)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_DP_Sprintz";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_DP_Sprintz";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -2027,8 +2027,8 @@ public class BPDP {
     public void SprintzVarPackSize() throws IOException {
         // 示例数据（实际应替换为真实时间序列）
         System.out.println("\nPerformance Testing with All Pack Sizes (1-16)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_DP_Sprintz_vary_pack_size";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_DP_Sprintz_vary_pack_size";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -2159,8 +2159,8 @@ public class BPDP {
     @Test
     public void SprintzVarChunkSize() throws IOException {
         System.out.println("\nPerformance Testing with Variable Chunk Sizes...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_DP_Sprintz_vary_m";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_DP_Sprintz_vary_m";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -2299,8 +2299,8 @@ public class BPDP {
     public void TS2DIFFDP() throws IOException {
         // 示例数据（实际应替换为真实时间序列）
         System.out.println("\nPerformance Testing with All Pack Sizes (1-16)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_DP_TS2DIFF";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_DP_TS2DIFF";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -2442,8 +2442,8 @@ public class BPDP {
     public void TS2DIFFDPVarPackSize() throws IOException {
         // 示例数据（实际应替换为真实时间序列）
         System.out.println("\nPerformance Testing with All Pack Sizes (1-16)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_DP_TS2DIFF_vary_pack_size";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_DP_TS2DIFF_vary_pack_size";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -2575,8 +2575,8 @@ public class BPDP {
     @Test
     public void TS2DIFFDPVarChunkSize() throws IOException {
         System.out.println("\nPerformance Testing with Variable Chunk Sizes...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_DP_TS2DIFF_vary_m";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_DP_TS2DIFF_vary_m";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -2720,7 +2720,7 @@ public class BPDP {
     @Test
     public void exportGroupSizes() throws IOException {
         System.out.println("\nExporting group sizes for packsize=1...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
+        String directory = "benchmark_data/ElfTestData_camel";
         File dir = new File(directory);
 
         for (File file : Objects.requireNonNull(dir.listFiles())) {
@@ -2778,7 +2778,7 @@ public class BPDP {
             }
 
             // 输出到CSV文件
-            String outputPath = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/pack_sizes/" +
+            String outputPath = "benchmark_data/pack_sizes/" +
                     file.getName().replace(".csv", "") + "_group_sizes.csv";
             CsvWriter writer = new CsvWriter(outputPath, ',', StandardCharsets.UTF_8);
 
@@ -2815,7 +2815,7 @@ public class BPDP {
             System.out.println("Group sizes exported to: " + outputPath);
 
             // 同时输出汇总统计信息
-            String statsPath = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/pack_sizes/" +
+            String statsPath = "benchmark_data/pack_sizes/" +
                     file.getName().replace(".csv", "") + "_group_stats.csv";
             CsvWriter statsWriter = new CsvWriter(statsPath, ',', StandardCharsets.UTF_8);
 

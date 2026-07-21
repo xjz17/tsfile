@@ -467,8 +467,8 @@ public class SprintzBDCTest {
     // -------------------- 主测试（参考你原 main） --------------------
     public static void main(String[] args) throws IOException {
         System.out.println("\nPerformance Testing (Dynamic pack over 8-values groups)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_sprintz_BDC";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_sprintz_BDC";
         File outputDir = new File(outputDirstr);
         if (!outputDir.exists()) outputDir.mkdir();
         File dir = new File(directory);
@@ -693,8 +693,8 @@ public class SprintzBDCTest {
     @Test
     public void TestVariablePackSize() throws IOException {
         System.out.println("\nPerformance Testing with Variable Pack Sizes (BDC)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_sprintz_BDC_vary_pack_size";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_sprintz_BDC_vary_pack_size";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -863,8 +863,8 @@ public class SprintzBDCTest {
     @Test
     public void TestVariableChunkSize() throws IOException {
         System.out.println("\nPerformance Testing with Variable Chunk Sizes (BDC)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_sprintz_BDC_vary_m";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_sprintz_BDC_vary_m";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();

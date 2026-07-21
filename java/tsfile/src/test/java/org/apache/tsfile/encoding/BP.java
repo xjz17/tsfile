@@ -411,8 +411,8 @@ public class BP {
     public void BP0() throws IOException {
         // 示例数据（实际应替换为真实时间序列）
         System.out.println("\nPerformance Testing...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BP";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BP";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -688,8 +688,8 @@ public class BP {
     public void TestVarPackSize() throws IOException {
         // 示例数据（实际应替换为真实时间序列）
         System.out.println("\nPerformance Testing...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BP_vary_pack_size";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BP_vary_pack_size";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -816,8 +816,8 @@ public class BP {
     @Test
     public void TestVariableChunkSize() throws IOException {
         System.out.println("\nPerformance Testing with Variable Chunk Sizes...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BP_vary_m";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BP_vary_m";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -970,8 +970,8 @@ public class BP {
     public void Zigzag() throws IOException {
         // 示例数据（实际应替换为真实时间序列）
         System.out.println("\nPerformance Testing...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BP_Zigzag";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BP_Zigzag";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -1101,8 +1101,8 @@ public class BP {
     public void ZigzagVarPackSize() throws IOException {
         // 示例数据（实际应替换为真实时间序列）
         System.out.println("\nPerformance Testing...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_Zigzag_vary_pack_size";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_Zigzag_vary_pack_size";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -1231,8 +1231,8 @@ public class BP {
     @Test
     public void ZigzagVariableChunkSize() throws IOException {
         System.out.println("\nPerformance Testing with Variable Chunk Sizes...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_Zigzag_vary_m";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_Zigzag_vary_m";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -1388,8 +1388,8 @@ public class BP {
     public void Sprintz() throws IOException {
         // 示例数据（实际应替换为真实时间序列）
         System.out.println("\nPerformance Testing...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BP_Sprintz";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BP_Sprintz";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -1522,8 +1522,8 @@ public class BP {
     public void SprintzVarPackSize() throws IOException {
         // 示例数据（实际应替换为真实时间序列）
         System.out.println("\nPerformance Testing...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_Sprintz_vary_pack_size";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_Sprintz_vary_pack_size";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -1652,8 +1652,8 @@ public class BP {
     @Test
     public void SprintzVariableChunkSize() throws IOException {
         System.out.println("\nPerformance Testing with Variable Chunk Sizes...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_Sprintz_vary_m";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_Sprintz_vary_m";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -1811,8 +1811,8 @@ public class BP {
     public void TS2DIFF() throws IOException {
         // 示例数据（实际应替换为真实时间序列）
         System.out.println("\nPerformance Testing...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BP_TS2DIFF";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BP_TS2DIFF";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -1945,8 +1945,8 @@ public class BP {
     public void TS2DIFFVarPackSize() throws IOException {
         // 示例数据（实际应替换为真实时间序列）
         System.out.println("\nPerformance Testing...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_TS2DIFF_vary_pack_size";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_TS2DIFF_vary_pack_size";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -2076,8 +2076,8 @@ public class BP {
     @Test
     public void TS2DIFFVariableChunkSize() throws IOException {
         System.out.println("\nPerformance Testing with Variable Chunk Sizes...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_TS2DIFF_vary_m";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_TS2DIFF_vary_m";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();

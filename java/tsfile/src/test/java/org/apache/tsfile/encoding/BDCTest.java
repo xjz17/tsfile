@@ -828,8 +828,8 @@ public class BDCTest {
     @Test
     public void BDC() throws IOException {
         System.out.println("\nPerformance Testing (Dynamic pack over 8-values groups)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BDC";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BDC";
         File outputDir = new File(outputDirstr);
         if (!outputDir.exists()) outputDir.mkdir();
         File dir = new File(directory);
@@ -1041,8 +1041,8 @@ public class BDCTest {
     @Test
     public void TestVariablePackSize() throws IOException {
         System.out.println("\nPerformance Testing with Variable Pack Sizes (BDC)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BDC_vary_pack_size";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BDC_vary_pack_size";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -1226,8 +1226,8 @@ public class BDCTest {
     @Test
     public void TestVariableChunkSize() throws IOException {
         System.out.println("\nPerformance Testing with Variable Chunk Sizes (BDC)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BDC_vary_m";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BDC_vary_m";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -1415,8 +1415,8 @@ public class BDCTest {
     @Test
     public void ZigzagBDC() throws IOException {
         System.out.println("\nPerformance Testing (Dynamic pack over 8-values groups)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BDC_Zigzag";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BDC_Zigzag";
         File outputDir = new File(outputDirstr);
         if (!outputDir.exists()) outputDir.mkdir();
         File dir = new File(directory);
@@ -1548,8 +1548,8 @@ public class BDCTest {
     @Test
     public void ZigzagVarPackSize() throws IOException {
         System.out.println("\nPerformance Testing with Variable Pack Sizes (BDC)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BDC_Zigzag_vary_pack_size";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BDC_Zigzag_vary_pack_size";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -1736,8 +1736,8 @@ public class BDCTest {
     @Test
     public void ZigzagVarChunkSize() throws IOException {
         System.out.println("\nPerformance Testing with Variable Chunk Sizes (BDC)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BDC_Zigzag_vary_m";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BDC_Zigzag_vary_m";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -1925,8 +1925,8 @@ public class BDCTest {
     @Test
     public void SprintzBDC() throws IOException {
         System.out.println("\nPerformance Testing (Dynamic pack over 8-values groups)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BDC_Sprintz";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BDC_Sprintz";
         File outputDir = new File(outputDirstr);
         if (!outputDir.exists()) outputDir.mkdir();
         File dir = new File(directory);
@@ -2060,8 +2060,8 @@ public class BDCTest {
     @Test
     public void SprintzVarPackSize() throws IOException {
         System.out.println("\nPerformance Testing with Variable Pack Sizes (BDC)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BDC_Sprintz_vary_pack_size";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BDC_Sprintz_vary_pack_size";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -2250,8 +2250,8 @@ public class BDCTest {
     @Test
     public void SprintzVarChunkSize() throws IOException {
         System.out.println("\nPerformance Testing with Variable Chunk Sizes (BDC)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BDC_Sprintz_vary_m";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BDC_Sprintz_vary_m";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -2442,8 +2442,8 @@ public class BDCTest {
     @Test
     public void TS2DIFFBDC() throws IOException {
         System.out.println("\nPerformance Testing (Dynamic pack over 8-values groups)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BDC_TS2DIFF";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BDC_TS2DIFF";
         File outputDir = new File(outputDirstr);
         if (!outputDir.exists()) outputDir.mkdir();
         File dir = new File(directory);
@@ -2577,8 +2577,8 @@ public class BDCTest {
     @Test
     public void TS2DIFFVarPackSize() throws IOException {
         System.out.println("\nPerformance Testing with Variable Pack Sizes (BDC)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BDC_TS2DIFF_vary_pack_size";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BDC_TS2DIFF_vary_pack_size";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();
@@ -2767,8 +2767,8 @@ public class BDCTest {
     @Test
     public void TS2DIFFVarChunkSize() throws IOException {
         System.out.println("\nPerformance Testing with Variable Chunk Sizes (BDC)...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BDC_TS2DIFF_vary_m";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BDC_TS2DIFF_vary_m";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) outputDir.mkdir();

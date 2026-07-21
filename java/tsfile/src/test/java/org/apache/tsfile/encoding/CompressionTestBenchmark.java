@@ -299,8 +299,8 @@ public class CompressionTestBenchmark {
     // 主函数：对目录中每个文件做 benchmark
     public static void main(String[] args) {
         System.out.println("\nCompression Algorithms Benchmarking...");
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_Compression";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_Compression";
         File outputDir = new File(outputDirstr);
 
         if (!outputDir.exists()) {

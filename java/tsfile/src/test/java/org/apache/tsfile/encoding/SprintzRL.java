@@ -1428,9 +1428,9 @@ public class SprintzRL {
     }
 
     public static void main(String[] args) {
-        String trainDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_sprintz_rl";
+        String trainDir = "benchmark_data/ElfTestData_camel";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_sprintz_rl";
 
         int epochs = 20;
 
@@ -1631,9 +1631,9 @@ public class SprintzRL {
     }
     @Test
     public void TestVarOctadSize() {
-        String trainDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_sprintz_RL_vary_pack_size";
+        String trainDir = "benchmark_data/ElfTestData_camel";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_sprintz_RL_vary_pack_size";
 
         int epochs = 100;
 
@@ -1809,9 +1809,9 @@ public class SprintzRL {
 
     @Test
     public void TestVariableChunkSize() {
-        String trainDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_sprintz_RL_vary_m";
+        String trainDir = "benchmark_data/ElfTestData_camel";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_sprintz_RL_vary_m";
 
         int epochs = 100;
 

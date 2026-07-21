@@ -562,12 +562,12 @@ public class RFOctadPackingSprintz {
     public static void main(String[] args) throws IOException {
         // 示例数据（实际应替换为真实时间序列）
         System.out.println("\nPerformance Testing...");
-//        String csvFilePath = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/processed_data.csv";
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BPRF_sprintz";
+//        String csvFilePath = "benchmark_data/processed_data.csv";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BPRF_sprintz";
         File outputDir = new File(outputDirstr);
 
-        String trainCsv = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/processed_data.csv";
+        String trainCsv = "benchmark_data/processed_data.csv";
         List<int[]> sequences = loadDataFromCSV(trainCsv);
         System.err.println("Loaded " + sequences.size() + " sequences from CSV");
 //        for(int[] seq : sequences){

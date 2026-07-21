@@ -45,8 +45,8 @@ public class Qlearning {
 
     public static void main(String[] args) throws IOException {
         // 示例数据（实际应替换为真实时间序列）
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        File outputDir = new File("/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output");
+        String directory = "benchmark_data/ElfTestData_camel";
+        File outputDir = new File("benchmark_data/output");
         if (!outputDir.exists()) outputDir.mkdir();
         File dir = new File(directory);
         for (File file : Objects.requireNonNull(dir.listFiles())) {

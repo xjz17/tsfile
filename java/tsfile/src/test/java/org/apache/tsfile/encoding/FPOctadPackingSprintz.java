@@ -344,7 +344,7 @@ public class FPOctadPackingSprintz {
     }
 //    public static void main(String[] args) throws IOException {
 //        // 从CSV文件训练模型
-//        String csvFilePath = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/processed_data.csv";
+//        String csvFilePath = "benchmark_data/processed_data.csv";
 ////        long startTime = System.nanoTime();
 //        RLDecisionModel trainedModel = trainModel(20, csvFilePath);
 ////        long duration = System.nanoTime() - startTime;
@@ -513,9 +513,9 @@ public class FPOctadPackingSprintz {
     public static void main(String[] args) throws IOException {
         // 示例数据（实际应替换为真实时间序列）
         System.out.println("\nPerformance Testing...");
-//        String csvFilePath = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/processed_data.csv";
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_sprintz_FP";
+//        String csvFilePath = "benchmark_data/processed_data.csv";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_sprintz_FP";
         File outputDir = new File(outputDirstr);
 
 //        RLDecisionModel trainedModel = trainModel(20, csvFilePath);

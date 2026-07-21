@@ -4678,9 +4678,9 @@ public class BPRL {
 
     @Test
     public void BPRL0() {
-        String trainDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BPRL";
+        String trainDir = "benchmark_data/ElfTestData_camel";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_BPRL";
 
         int epochs = 20;
 
@@ -5579,9 +5579,9 @@ public class BPRL {
     @Test
     public void TestVarPackSize() {
         refreshRuntimeFlagsFromSystemProperties();
-        String trainDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BPRL_vary_pack_size";
+        String trainDir = "benchmark_data/ElfTestData_camel";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_BPRL_vary_pack_size";
 
         int epochs = all_epochs;
 
@@ -5598,9 +5598,9 @@ public class BPRL {
 
     @Test
     public void TestVariableChunkSize() {
-        String trainDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BPRL_vary_m";
+        String trainDir = "benchmark_data/ElfTestData_camel";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_BPRL_vary_m";
 
         int epochs = all_epochs;
 
@@ -5616,9 +5616,9 @@ public class BPRL {
 
     @Test
     public void ZigzagRL() {
-        String trainDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_RL_Zigzag";
+        String trainDir = "benchmark_data/ElfTestData_camel";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_RL_Zigzag";
 
         int epochs = 200;
 
@@ -5633,9 +5633,9 @@ public class BPRL {
     @Test
     public void ZigzagVarPackSize() {
         refreshRuntimeFlagsFromSystemProperties();
-        String trainDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_RL_Zigzag_vary_pack_size";
+        String trainDir = "benchmark_data/ElfTestData_camel";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_RL_Zigzag_vary_pack_size";
 
         int epochs = 300;
 
@@ -5651,9 +5651,9 @@ public class BPRL {
 
     @Test
     public void ZigzagVarChunkSize() {
-        String trainDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_RL_Zigzag_vary_m";
+        String trainDir = "benchmark_data/ElfTestData_camel";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_RL_Zigzag_vary_m";
 
         int epochs = all_epochs;
 
@@ -5670,9 +5670,9 @@ public class BPRL {
 
     @Test
     public void SprintzRL() {
-        String trainDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_RL_Sprintz";
+        String trainDir = "benchmark_data/ElfTestData_camel";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_RL_Sprintz";
 
         int epochs = 200;
 
@@ -5687,9 +5687,9 @@ public class BPRL {
     @Test
     public void SprintzVarPackSize() {
         refreshRuntimeFlagsFromSystemProperties();
-        String trainDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_RL_Sprintz_vary_pack_size";
+        String trainDir = "benchmark_data/ElfTestData_camel";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_RL_Sprintz_vary_pack_size";
 
         int epochs = all_epochs;
 
@@ -5705,9 +5705,9 @@ public class BPRL {
 
     @Test
     public void SprintzVarChunkSize() {
-        String trainDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_RL_Sprintz_vary_m";
+        String trainDir = "benchmark_data/ElfTestData_camel";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_RL_Sprintz_vary_m";
 
         int epochs = all_epochs;
 
@@ -5723,9 +5723,9 @@ public class BPRL {
 
     @Test
     public void TS2DIFFRL() {
-        String trainDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_RL_TS2DIFF";
+        String trainDir = "benchmark_data/ElfTestData_camel";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_RL_TS2DIFF";
 
         int epochs = 200;
 
@@ -5744,9 +5744,9 @@ public class BPRL {
     @Test
     public void TS2DIFFVarPackSize() {
         refreshRuntimeFlagsFromSystemProperties();
-        String trainDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_RL_TS2DIFF_vary_pack_size";
+        String trainDir = "benchmark_data/ElfTestData_camel";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_RL_TS2DIFF_vary_pack_size";
 
         int epochs = all_epochs;
 
@@ -5763,9 +5763,9 @@ public class BPRL {
 
     @Test
     public void TS2DIFFVarChunkSize() {
-        String trainDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_RL_TS2DIFF_vary_m";
+        String trainDir = "benchmark_data/ElfTestData_camel";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_RL_TS2DIFF_vary_m";
 
         int epochs = all_epochs;
 

@@ -218,11 +218,11 @@ public class OtherBaselinesBenchmark {
     String dataDir =
         args.length > 0
             ? args[0]
-            : "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
+            : "benchmark_data/ElfTestData_camel";
     String outDirStr =
         args.length > 1
             ? args[1]
-            : "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_other_baseline";
+            : "benchmark_data/output_other_baseline";
 
     File outDir = new File(outDirStr);
     if (!outDir.exists() && !outDir.mkdirs()) {

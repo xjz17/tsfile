@@ -17,24 +17,24 @@ public class ModelPredict{
 
     public ModelPredict() throws Exception {
         // 初始化模型预测器（建议使用单例模式）
-        modelPredictor = new RandomForestPredictor("/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/forest_params.json");
+        modelPredictor = new RandomForestPredictor("benchmark_data/forest_params.json");
     }
 
     public static void main(String[] args) throws Exception {
 
-        modelPredictor = new RandomForestPredictor("/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/forest_params.json");
+        modelPredictor = new RandomForestPredictor("benchmark_data/forest_params.json");
 
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        File outputDir = new File("/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output");
+        String directory = "benchmark_data/ElfTestData_camel";
+        File outputDir = new File("benchmark_data/output");
         if (!outputDir.exists()) outputDir.mkdir();
 
 
         // 初始化性能记录文件
-        CsvWriter perfWriter = new CsvWriter(new FileWriter("/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output/performance_comparison.csv"), ',');
+        CsvWriter perfWriter = new CsvWriter(new FileWriter("benchmark_data/output/performance_comparison.csv"), ',');
         perfWriter.writeRecord(new String[]{"Dataset", "Model_Time", "Model_Cost","Model_Ratio", "Optimized_Time", "Optimized_Cost", "Optimized_Ratio"});
 
 //        // 初始化特征文件（如需）
-//        CsvWriter featWriter = new CsvWriter(new FileWriter("/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output/features_for_train.csv"), ',');
+//        CsvWriter featWriter = new CsvWriter(new FileWriter("benchmark_data/output/features_for_train.csv"), ',');
 //        featWriter.writeRecord(new String[]{"Dataset", "decimal_precision_max", "decimal_precision_avg", "range",
 //                "significance_bits_max", "significance_bits_avg", "optimal_block_size", "block_cost"});
 

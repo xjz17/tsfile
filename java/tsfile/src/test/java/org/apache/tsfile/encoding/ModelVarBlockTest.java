@@ -61,8 +61,8 @@ public class ModelVarBlockTest {
     public static void main(String[] args) {
         try {
             ModelVarBlockTest predictor = new ModelVarBlockTest(
-                    "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/partition_model.onnx",
-                    "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/scaler_params.json"
+                    "benchmark_data/partition_model.onnx",
+                    "benchmark_data/scaler_params.json"
             );
 
             float[] features = {2f, 2.0f, -13f, -6f, 16f, 15.073f};

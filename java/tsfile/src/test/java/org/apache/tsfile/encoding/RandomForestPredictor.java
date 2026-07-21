@@ -70,7 +70,7 @@ public class RandomForestPredictor {
 
     public static void main(String[] args) throws Exception {
         // 使用示例
-        RandomForestPredictor predictor = new RandomForestPredictor("/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/forest_params.json");
+        RandomForestPredictor predictor = new RandomForestPredictor("benchmark_data/forest_params.json");
         double[] testFeatures = {5.0, 3.2, 100.0, 200.0, 15.0, 12.5};
         int blockSize = predictor.predict(testFeatures);
         System.out.println("预测块大小: " + blockSize);

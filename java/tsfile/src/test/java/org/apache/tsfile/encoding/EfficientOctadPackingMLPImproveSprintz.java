@@ -1550,9 +1550,9 @@ public class EfficientOctadPackingMLPImproveSprintz {
 
     // ========== 主函数 ==========
     public static void main(String[] args) {
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_sprintz_rl_vary_pack_size";
-        String modelPath = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/sprintz_rl_optimized.model";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_sprintz_rl_vary_pack_size";
+        String modelPath = "benchmark_data/sprintz_rl_optimized.model";
 
         int epochs = 200;
 
@@ -1578,9 +1578,9 @@ public class EfficientOctadPackingMLPImproveSprintz {
 
     @Test
     public void TestOptimizedModelVarPackSize() {
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_sprintz_RL_vary_pack_size";
-        String modelPath = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/sprintz_rl_optimized.model";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_sprintz_RL_vary_pack_size";
+        String modelPath = "benchmark_data/sprintz_rl_optimized.model";
 
         int epochs = 200;
 
@@ -1593,9 +1593,9 @@ public class EfficientOctadPackingMLPImproveSprintz {
 
     @Test
     public void TestLoadAndUseOptimizedModel() {
-        String modelPath = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/sprintz_rl_optimized.model";
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_optimized_model_test";
+        String modelPath = "benchmark_data/sprintz_rl_optimized.model";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_optimized_model_test";
 
         System.out.println("\nPerformance Testing with Optimized Model...");
         RLDecisionModel model;

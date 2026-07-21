@@ -287,7 +287,7 @@ public class BPTest {
 
     @Test
     public void testBP() throws IOException {
-        String parent_dir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/";
+        String parent_dir = "benchmark_data/";
         // String parent_dir = "D:/encoding-benchmark/dataset/";
 
         String output_parent_dir = "D:/encoding-benchmark/";

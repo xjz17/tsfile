@@ -1140,9 +1140,9 @@ public static final class BitReader {
     }
 
     public static void main(String[] args) {
-        String trainCsv = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/processed_data.csv";
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BPRL";
+        String trainCsv = "benchmark_data/processed_data.csv";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_BPRL";
 
         int epochs = 20;
 
@@ -1317,9 +1317,9 @@ public static final class BitReader {
     
     @Test
     public void TestVarPackSize() {
-        String trainCsv = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/processed_data.csv";
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BPRL_vary_pack_size";
+        String trainCsv = "benchmark_data/processed_data.csv";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_BPRL_vary_pack_size";
 
         int epochs = 80;
 
@@ -1499,9 +1499,9 @@ public static final class BitReader {
 
     @Test
     public void TestVariableChunkSize() {
-        String trainCsv = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/processed_data.csv";
-        String dataDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outDir = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BPRL_vary_m";
+        String trainCsv = "benchmark_data/processed_data.csv";
+        String dataDir = "benchmark_data/ElfTestData_camel";
+        String outDir = "benchmark_data/output_BPRL_vary_m";
 
         int epochs = 20;
 

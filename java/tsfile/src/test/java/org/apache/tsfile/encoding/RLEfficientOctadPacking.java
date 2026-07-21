@@ -216,9 +216,9 @@ public class RLEfficientOctadPacking {
     public static void performanceTest(ActorNetwork actor) throws IOException {
         // 示例数据（实际应替换为真实时间序列）
         System.out.println("\nPerformance Testing...");
-//        String csvFilePath = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/processed_data.csv";
-        String directory = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel";
-        String outputDirstr = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/output_BPRL";
+//        String csvFilePath = "benchmark_data/processed_data.csv";
+        String directory = "benchmark_data/ElfTestData_camel";
+        String outputDirstr = "benchmark_data/output_BPRL";
         File outputDir = new File(outputDirstr);
 
 //        RLDecisionModel trainedModel = trainModel(20, csvFilePath);
@@ -780,9 +780,9 @@ public class RLEfficientOctadPacking {
     public static void main(String[] args) throws IOException {
         // 生成训练数据
 
-        String csvFilePath = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/rl_train_data.csv";
+        String csvFilePath = "benchmark_data/rl_train_data.csv";
 //        RLDecisionModel trainedModel = trainModel(20, csvFilePath);
-        String modelPath = "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/packing_model";
+        String modelPath = "benchmark_data/packing_model";
         System.out.println("Training RL model from CSV data...");
         RLDecisionModel model = new RLDecisionModel();
         List<int[]> sequences = new ArrayList<>();

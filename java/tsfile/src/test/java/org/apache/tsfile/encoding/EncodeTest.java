@@ -27,8 +27,8 @@ public class EncodeTest {
 
   public static void main(@NotNull String[] args) throws IOException {
 
-    String parent_dir = "/Users/xiaojinzhao/Documents/GitHub/encoding-outlier/";
-//    String parent_dir = "/Users/zihanguo/Downloads/R/outlier/outliier_code/encoding-outlier/";
+    String parent_dir = "benchmark_data/encoding-outlier/";
+//    String parent_dir = "benchmark_data/encoding-outlier/";
     String output_parent_dir = parent_dir + "icde0802/compression_ratio/sota_ratio/";
     String input_parent_dir = parent_dir + "trans_data/";
     ArrayList<String> input_path_list = new ArrayList<>();

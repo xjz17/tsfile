@@ -156,7 +156,7 @@ public class BPRLCostConsistencyTest {
     private static long[] loadUsgsChunk1024() throws Exception {
         List<String> nums = new ArrayList<>();
         try (BufferedReader br = Files.newBufferedReader(Paths.get(
-                "/Users/xiaojinzhao/Documents/GitHub/encoding-block/elf_resources/ElfTestData_camel/USGS-Earthquakes.csv"))) {
+                "benchmark_data/ElfTestData_camel/USGS-Earthquakes.csv"))) {
             String line;
             while ((line = br.readLine()) != null && nums.size() < 1024) {
                 for (String token : line.split(",")) {
