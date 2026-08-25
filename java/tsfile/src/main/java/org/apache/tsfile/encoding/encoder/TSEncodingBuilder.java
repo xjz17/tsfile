@@ -81,6 +81,10 @@ public abstract class TSEncodingBuilder {
         return new RLBE();
       case CAMEL:
         return new Camel();
+      case BOS:
+        return new ExperimentalNumeric(TSEncoding.BOS);
+      case SUBCOLUMN:
+        return new ExperimentalNumeric(TSEncoding.SUBCOLUMN);
       default:
         throw new UnsupportedOperationException(
             Messages.format("error.encoding.ts_encoding_builder_unsupported", type));
@@ -108,6 +112,36 @@ public abstract class TSEncodingBuilder {
   @Override
   public String toString() {
     return "";
+  }
+
+  /** Lossless BOS or Sub-column encoding for numeric data types. */
+  public static class ExperimentalNumeric extends TSEncodingBuilder {
+
+    private final TSEncoding encoding;
+
+    private ExperimentalNumeric(TSEncoding encoding) {
+      this.encoding = encoding;
+    }
+
+    @Override
+    public Encoder getEncoder(TSDataType type) {
+      switch (type) {
+        case INT32:
+        case DATE:
+        case INT64:
+        case TIMESTAMP:
+        case FLOAT:
+        case DOUBLE:
+          return encoding == TSEncoding.BOS ? new BosEncoder(type) : new SubcolumnEncoder(type);
+        default:
+          throw new UnSupportedDataTypeException(Messages.format(ERROR_MSG_KEY, encoding, type));
+      }
+    }
+
+    @Override
+    public void initFromProps(Map<String, String> props) {
+      // No tunable properties yet. The on-disk payload carries its codec parameters.
+    }
   }
 
   /** for all TSDataType. */

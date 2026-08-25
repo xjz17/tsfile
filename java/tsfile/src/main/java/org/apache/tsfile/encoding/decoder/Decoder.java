@@ -185,6 +185,10 @@ public abstract class Decoder {
           default:
             throw new TsFileDecodingException(Messages.format(ERROR_MSG_KEY, encoding, dataType));
         }
+      case BOS:
+        return new BosDecoder(dataType);
+      case SUBCOLUMN:
+        return new SubcolumnDecoder(dataType);
       default:
         throw new TsFileDecodingException(Messages.format(ERROR_MSG_KEY, encoding, dataType));
     }
