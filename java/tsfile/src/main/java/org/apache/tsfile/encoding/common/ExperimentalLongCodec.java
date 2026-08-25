@@ -44,7 +44,7 @@ public final class ExperimentalLongCodec {
   }
 
   private static byte[] encodeBos(long[] values) {
-    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    ByteArrayOutputStream out = new ByteArrayOutputStream(Math.max(32, values.length * 4));
     putInt(out, values.length);
     putInt(out, BOS_BLOCK_SIZE);
     for (int offset = 0; offset < values.length; offset += BOS_BLOCK_SIZE) {
@@ -69,31 +69,29 @@ public final class ExperimentalLongCodec {
       }
       BosPlan plan = chooseBosPlan(deltas);
       byte[] bitmap = new byte[(deltas.length + 7) >>> 3];
-      long[] inliers = new long[deltas.length - plan.outlierCount];
-      long[] outliers = new long[plan.outlierCount];
-      int inlierPosition = 0;
-      int outlierPosition = 0;
+      BitWriter packedWriter = new BitWriter(deltas.length - plan.outlierCount, plan.width);
       for (int i = 0; i < deltas.length; i++) {
         long delta = deltas[i];
         if (delta < plan.lower || delta > plan.upper) {
           bitmap[i >>> 3] |= (byte) (1 << (i & 7));
-          outliers[outlierPosition++] = delta;
         } else {
-          inliers[inlierPosition++] = delta - plan.lower;
+          packedWriter.write(delta - plan.lower, plan.width);
         }
       }
-      byte[] packed = pack(inliers, plan.width);
+      byte[] packed = packedWriter.finish();
 
       // BOS pipeline: delta -> outlier separation -> FOR -> bit packing.
       putLong(out, plan.lower);
       out.write(plan.width);
       putInt(out, bitmap.length);
       putInt(out, packed.length);
-      putInt(out, outliers.length);
+      putInt(out, plan.outlierCount);
       putBytes(out, bitmap);
       putBytes(out, packed);
-      for (long outlier : outliers) {
-        putLong(out, outlier);
+      for (long delta : deltas) {
+        if (delta < plan.lower || delta > plan.upper) {
+          putLong(out, delta);
+        }
       }
     }
     return out.toByteArray();
@@ -122,39 +120,32 @@ public final class ExperimentalLongCodec {
       if (width > Long.SIZE || bitmapLength != ((length - 1 + 7) >>> 3)) {
         throw new IllegalArgumentException("invalid BOS block header");
       }
-      byte[] bitmap = reader.readBytes(bitmapLength);
-      byte[] packed = reader.readBytes(packedLength);
-      long[] outliers = new long[outlierCount];
-      for (int i = 0; i < outlierCount; i++) {
-        outliers[i] = reader.readLong();
-      }
       int inlierCount = length - 1 - outlierCount;
       if (inlierCount < 0) {
         throw new IllegalArgumentException("invalid BOS outlier count");
       }
-      long[] inliers = unpack(packed, inlierCount, width);
-      int inlierPosition = 0;
-      int outlierPosition = 0;
+      long expectedPackedLength = (((long) inlierCount * width) + 7) >>> 3;
+      if (expectedPackedLength != packedLength) {
+        throw new IllegalArgumentException("invalid BOS packed length");
+      }
+      int bitmapOffset = reader.position;
+      reader.skip(bitmapLength);
+      int actualOutliers = 0;
+      for (int i = 0; i < bitmapLength; i++) {
+        actualOutliers += Integer.bitCount(payload[bitmapOffset + i] & 0xff);
+      }
+      if (actualOutliers != outlierCount) {
+        throw new IllegalArgumentException("invalid BOS outlier bitmap");
+      }
+      int packedOffset = reader.position;
+      reader.skip(packedLength);
+      BitReader packed = new BitReader(payload, packedOffset, packedLength);
       long previous = values[written];
       for (int i = 0; i < length - 1; i++) {
-        boolean outlier = ((bitmap[i >>> 3] >>> (i & 7)) & 1) != 0;
-        long delta;
-        if (outlier) {
-          if (outlierPosition >= outliers.length) {
-            throw new IllegalArgumentException("truncated BOS outliers");
-          }
-          delta = outliers[outlierPosition++];
-        } else {
-          if (inlierPosition >= inliers.length) {
-            throw new IllegalArgumentException("truncated BOS inliers");
-          }
-          delta = lower + inliers[inlierPosition++];
-        }
+        boolean outlier = ((payload[bitmapOffset + (i >>> 3)] >>> (i & 7)) & 1) != 0;
+        long delta = outlier ? reader.readLong() : lower + packed.read(width);
         previous += delta;
         values[written + i + 1] = previous;
-      }
-      if (inlierPosition != inliers.length || outlierPosition != outliers.length) {
-        throw new IllegalArgumentException("unused BOS payload values");
       }
       written += length;
     }
@@ -169,20 +160,17 @@ public final class ExperimentalLongCodec {
       0, deltas.length / 100, deltas.length / 50, deltas.length / 20, deltas.length / 10
     };
     BosPlan best = null;
+    int previousTrim = -1;
     for (int trim : trims) {
-      if (trim * 2 >= sorted.length) {
+      if (trim == previousTrim || trim * 2 >= sorted.length) {
         continue;
       }
+      previousTrim = trim;
       long lower = sorted[trim];
       long upper = sorted[sorted.length - 1 - trim];
       long range = upper - lower;
       int width = unsignedBitWidth(range);
-      int outliers = 0;
-      for (long delta : deltas) {
-        if (delta < lower || delta > upper) {
-          outliers++;
-        }
-      }
+      int outliers = lowerBound(sorted, lower) + sorted.length - upperBound(sorted, upper);
       long inliers = (long) deltas.length - outliers;
       long cost =
           ((deltas.length + 7L) >>> 3)
@@ -199,6 +187,34 @@ public final class ExperimentalLongCodec {
       throw new IllegalArgumentException("cannot choose BOS plan");
     }
     return best;
+  }
+
+  private static int lowerBound(long[] values, long target) {
+    int low = 0;
+    int high = values.length;
+    while (low < high) {
+      int middle = (low + high) >>> 1;
+      if (values[middle] < target) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    return low;
+  }
+
+  private static int upperBound(long[] values, long target) {
+    int low = 0;
+    int high = values.length;
+    while (low < high) {
+      int middle = (low + high) >>> 1;
+      if (values[middle] <= target) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    return low;
   }
 
   private static byte[] encodeSubcolumn(long[] values) {
@@ -425,7 +441,7 @@ public final class ExperimentalLongCodec {
     if (width < 0 || width > Long.SIZE) {
       throw new IllegalArgumentException("invalid bit width");
     }
-    BitWriter writer = new BitWriter();
+    BitWriter writer = new BitWriter(values.length, width);
     for (long value : values) {
       writer.write(value, width);
     }
@@ -489,47 +505,76 @@ public final class ExperimentalLongCodec {
   }
 
   private static final class BitWriter {
-    private final ByteArrayOutputStream out = new ByteArrayOutputStream();
-    private int current;
-    private int used;
+    private final byte[] data;
+    private int bitPosition;
+
+    private BitWriter(int count, int width) {
+      long bytes = (((long) count * width) + 7) >>> 3;
+      if (bytes > Integer.MAX_VALUE) {
+        throw new IllegalArgumentException("packed payload is too large");
+      }
+      data = new byte[(int) bytes];
+    }
 
     private void write(long value, int width) {
-      for (int bit = width - 1; bit >= 0; bit--) {
-        current = (current << 1) | (int) ((value >>> bit) & 1);
-        used++;
-        if (used == Byte.SIZE) {
-          out.write(current);
-          current = 0;
-          used = 0;
+      int remaining = width;
+      while (remaining > 0) {
+        int bitOffset = bitPosition & 7;
+        int take = Math.min(Byte.SIZE - bitOffset, remaining);
+        int sourceShift = remaining - take;
+        int mask = (1 << take) - 1;
+        int chunk = (int) ((value >>> sourceShift) & mask);
+        data[bitPosition >>> 3] |= (byte) (chunk << (Byte.SIZE - bitOffset - take));
+        bitPosition += take;
+        remaining -= take;
+        if (bitOffset == 0 && remaining >= Byte.SIZE) {
+          int bytes = remaining >>> 3;
+          for (int i = 0; i < bytes; i++) {
+            int shift = remaining - Byte.SIZE;
+            data[bitPosition >>> 3] = (byte) (value >>> shift);
+            bitPosition += Byte.SIZE;
+            remaining -= Byte.SIZE;
+          }
         }
       }
     }
 
     private byte[] finish() {
-      if (used != 0) {
-        out.write(current << (Byte.SIZE - used));
-      }
-      return out.toByteArray();
+      return data;
     }
   }
 
   private static final class BitReader {
     private final byte[] data;
+    private final int byteOffset;
+    private final int byteLength;
     private int bitPosition;
 
     private BitReader(byte[] data) {
+      this(data, 0, data.length);
+    }
+
+    private BitReader(byte[] data, int byteOffset, int byteLength) {
       this.data = data;
+      this.byteOffset = byteOffset;
+      this.byteLength = byteLength;
     }
 
     private long read(int width) {
       long value = 0;
-      for (int i = 0; i < width; i++) {
-        if ((bitPosition >>> 3) >= data.length) {
+      int remaining = width;
+      while (remaining > 0) {
+        if ((bitPosition >>> 3) >= byteLength) {
           throw new IllegalArgumentException("truncated bit-packed payload");
         }
-        int current = data[bitPosition >>> 3] & 0xff;
-        value = (value << 1) | ((current >>> (7 - (bitPosition & 7))) & 1);
-        bitPosition++;
+        int current = data[byteOffset + (bitPosition >>> 3)] & 0xff;
+        int bitOffset = bitPosition & 7;
+        int take = Math.min(Byte.SIZE - bitOffset, remaining);
+        int shift = Byte.SIZE - bitOffset - take;
+        int mask = (1 << take) - 1;
+        value = (value << take) | ((current >>> shift) & mask);
+        bitPosition += take;
+        remaining -= take;
       }
       return value;
     }
@@ -582,6 +627,11 @@ public final class ExperimentalLongCodec {
       byte[] result = Arrays.copyOfRange(data, position, position + length);
       position += length;
       return result;
+    }
+
+    private void skip(int length) {
+      require(length);
+      position += length;
     }
 
     private void require(int length) {

@@ -45,8 +45,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
+import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HexFormat;
 import java.util.Random;
 
 import static org.junit.Assert.assertArrayEquals;
@@ -83,6 +85,26 @@ public class ExperimentalLongCodecTest {
       assertThrows(
           IllegalArgumentException.class, () -> ExperimentalLongCodec.decode(kind, truncated));
     }
+  }
+
+  @Test
+  public void testBosOptimizedPathKeepsWireFormat() throws Exception {
+    long[] values = new long[1025];
+    long state = 0x123456789abcdef0L;
+    for (int i = 0; i < values.length; i++) {
+      state ^= state << 13;
+      state ^= state >>> 7;
+      state ^= state << 17;
+      values[i] = state;
+    }
+
+    byte[] payload = ExperimentalLongCodec.encode(ExperimentalLongCodec.Kind.BOS, values);
+    assertEquals(8411, payload.length);
+    assertEquals(
+        "8f2a0e75bc2865173251dd4aac406883cfd1894fa75e853b5f0b4db8df27ddb5",
+        HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(payload)));
+    assertArrayEquals(
+        values, ExperimentalLongCodec.decode(ExperimentalLongCodec.Kind.BOS, payload));
   }
 
   @Test
