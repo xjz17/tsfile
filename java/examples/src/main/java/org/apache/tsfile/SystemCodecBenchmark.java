@@ -38,8 +38,10 @@ import java.io.DataInputStream;
 import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -63,18 +65,24 @@ public final class SystemCodecBenchmark {
   private SystemCodecBenchmark() {}
 
   public static void main(String[] args) throws Exception {
-    if (args.length < 3 || args.length > 4) {
+    if (args.length < 3 || args.length > 5) {
       throw new IllegalArgumentException(
-          "usage: SystemCodecBenchmark <input.scdbin> <output-dir> <dataset> [iterations]");
+          "usage: SystemCodecBenchmark <input.scdbin> <output-dir> <dataset> [iterations] [warmups]");
     }
     Dataset dataset = readDataset(java.nio.file.Path.of(args[0]));
     java.nio.file.Path outputDirectory = java.nio.file.Path.of(args[1]);
     Files.createDirectories(outputDirectory);
-    int iterations = args.length == 4 ? Integer.parseInt(args[3]) : 3;
+    int iterations = args.length >= 4 ? Integer.parseInt(args[3]) : 3;
+    int warmups = args.length >= 5 ? Integer.parseInt(args[4]) : 1;
+    if (iterations <= 0 || warmups <= 0) {
+      throw new IllegalArgumentException("iterations and warmups must be positive");
+    }
     System.out.println(
         "system,dataset,codec,iteration,rows,columns,write_ms,read_ms,file_bytes,hash_ok");
-    for (TSEncoding encoding : ENCODINGS) {
-      for (int iteration = -1; iteration < iterations; iteration++) {
+    for (int iteration = -warmups; iteration < iterations; iteration++) {
+      int start = Math.floorMod(iteration + warmups, ENCODINGS.size());
+      for (int step = 0; step < ENCODINGS.size(); step++) {
+        TSEncoding encoding = ENCODINGS.get((start + step) % ENCODINGS.size());
         java.nio.file.Path path =
             outputDirectory.resolve(
                 sanitize(args[2])
@@ -130,6 +138,9 @@ public final class SystemCodecBenchmark {
       if (tablet.getRowSize() != 0) {
         writer.writeTree(tablet);
       }
+    }
+    try (FileChannel channel = FileChannel.open(file.toPath(), StandardOpenOption.WRITE)) {
+      channel.force(true);
     }
     long writeNanos = System.nanoTime() - writeStart;
     long fileBytes = file.length();
